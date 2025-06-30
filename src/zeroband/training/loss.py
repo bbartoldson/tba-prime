@@ -4,15 +4,18 @@ from beartype import beartype as typechecker
 from jaxtyping import Float, Int, jaxtyped
 from torch import Tensor
 
-from zeroband.training.config import ClippingConfig, GRPOVariantsConfig, KlCovConfig, RatioConfig
+from zeroband.training.config import ClippingConfig, GRPOVariantsConfig, KlCovConfig, RatioConfig, TBConfig
 
 
 @jaxtyped(typechecker=typechecker)
 def grpo_loss(
     logits: Float[Tensor, "batch seq vocab"],
     input_ids: Int[Tensor, "batch seq"],
+    rewards: Float[Tensor, "batch"],
     advantages: Float[Tensor, "batch seq"],
+    logZ_batch,
     original_logprobs: Float[Tensor, "batch seq_minus_1"],
+    ref_logprobs: Float[Tensor, "batch seq_minus_1"],
     loss_mask: Int[Tensor, "batch seq"],
     temperature: float,
     max_tokens: int,
@@ -58,8 +61,80 @@ def grpo_loss(
             grpo_loss_config.k_percent,
             grpo_loss_config.highest_entropy_ratio_loss,
         )
+    elif isinstance(grpo_loss_config, TBConfig):
+        return grpo_loss_tb(
+            logits,
+            input_ids,
+            rewards,
+            logZ_batch,
+            ref_logprobs,
+            loss_mask,
+            temperature,
+            max_tokens,
+            grpo_loss_config.beta,
+        )
     else:
         raise ValueError(f"Invalid grpo_loss_type: {grpo_loss_config.type}")
+
+
+@jaxtyped(typechecker=typechecker)
+def grpo_loss_tb(
+    logits: Float[Tensor, "batch seq vocab"],
+    input_ids: Int[Tensor, "batch seq"],
+    rewards: Float[Tensor, "batch"],
+    logZ_batch,
+    ref_logprobs: Float[Tensor, "batch seq_minus_1"],
+    loss_mask: Int[Tensor, "batch seq"],
+    temperature: float,
+    max_tokens: int,
+    beta: float, # reward temperature
+) -> tuple[Tensor, None]:
+    """
+    DeepSeek Math Loss: https://arxiv.org/abs/2402.03300
+
+    Args:
+        policy_logprobs: Log probabilities from the policy model
+        ref_logprobs: Log probabilities from the reference model
+        advantages: Advantages for each token
+        beta: KL penalty coefficient
+        epsilon: Clipping parameter for PPO
+        ignore_index: Specifies a target value that is ignored and does not contribute to the loss
+    """
+    # we start by dropping the bos token because it does not have a corresponding logit
+    input_ids = input_ids[:, 1:]
+    #rewards = rewards[:, 1:]
+    loss_mask = loss_mask[:, 1:]
+
+    # from the logits we drop the last logits because it corresponds to the next token that will be sample but is not here yet
+    logits = logits[:, :-1, :]  # (B, L-1, V), exclude the last logit: it corresponds to the next token prediction
+
+    # Divide logits by sampling temperature.
+    # See https://huggingface.co/blog/the_n_implementation_details_of_rlhf_with_ppo#policy-training-implementation-details
+    logits = logits / temperature
+    per_token_logps = selective_log_softmax(logits, input_ids)
+    masked_per_token_logps = per_token_logps * loss_mask
+    masked_ref_logprobs = ref_logprobs * loss_mask
+
+    residuals = (logZ_batch + beta * (masked_per_token_logps.sum(1) - masked_ref_logprobs.sum(1)) - rewards)**2
+    loss = residuals.sum() / (2 * beta)
+    return loss, None
+
+    coef_1 = torch.clamp(torch.exp(per_token_logps - original_logprobs), 0, clip_ratio)
+
+    coef_2 = torch.clamp(coef_1, 1 - epsilon_low, 1 + epsilon_high)
+    per_token_loss1 = -coef_1 * advantages
+    per_token_loss2 = -coef_2 * advantages
+    per_token_loss = torch.max(per_token_loss1, per_token_loss2)
+
+    is_clipped = (per_token_loss1 < per_token_loss2).float()
+    clip_ratio = _apply_mask(is_clipped, loss_mask, max_tokens)
+
+    if highest_entropy_percentage < 1.0:
+        loss_mask = highest_entropy_mask(logits, loss_mask, highest_entropy_percentage)
+
+    loss = _apply_mask(per_token_loss, loss_mask, max_tokens)
+
+    return loss, clip_ratio
 
 
 @jaxtyped(typechecker=typechecker)

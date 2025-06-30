@@ -177,7 +177,15 @@ def format_prompts(
             ]
     else:
         # No length prompt additions, just use the prompts as is
-        messages = [[{"role": "user", "content": prompt + f" Place your answer at end exactly inside latex box for example \\boxed{12} or \\boxed{51}."}] for prompt in prompts]
+        messages = [
+            [
+                {
+                    "role": "user",
+                    "content": prompt + f" Place your answer at end exactly inside latex box for example \\boxed{12} or \\boxed{51}.",
+                }
+            ]
+            for prompt in prompts
+        ]
 
     # Apply chat template
     formatted_prompts = tokenizer.apply_chat_template(

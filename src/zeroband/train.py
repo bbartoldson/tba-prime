@@ -33,6 +33,7 @@ from zeroband.training.utils import (
     reshard_module,
     wake_up_model_from_cpu,
 )
+from zeroband.training.config import ClippingConfig, GRPOVariantsConfig, KlCovConfig, RatioConfig, TBConfig
 from zeroband.training.world_info import WorldInfo, get_world_info
 from zeroband.utils.models import ModelType, get_model_and_tokenizer
 from zeroband.utils.monitor import setup_monitor
@@ -131,7 +132,7 @@ def train(config: TrainingConfig):
 
     apply_fsdp(model, config.train.reshard_after_forward)
 
-    if config.grpo.kl_coef is not None:
+    if config.grpo.kl_coef is not None or isinstance(config.grpo.off_policy, TBConfig):
         model_reference, _ = get_model_and_tokenizer(config.model.name, config.train.attn_impl)
         apply_fsdp(model_reference, config.train.reshard_after_forward)
 
@@ -198,6 +199,10 @@ def train(config: TrainingConfig):
 
     previous_ckpt_rollout = []
 
+    # Number of samples per query for TB log Z acc
+    if isinstance(config.grpo.off_policy, TBConfig):
+        K = config.grpo.off_policy.n
+
     logger.info("Starting training loop")
 
     while True:
@@ -205,6 +210,8 @@ def train(config: TrainingConfig):
 
         total_time_data_loading = 0
         total_time_packing = 0
+        if isinstance(config.grpo.off_policy, TBConfig):
+            logZ_list = []
 
         # here we want to pre-compute the logprobs with the model before update
         with torch.no_grad():
@@ -236,6 +243,10 @@ def train(config: TrainingConfig):
                     batch_rollout, config.data.seq_length, tokenizer.pad_token_id, config.train.micro_bs, config.collate_mode
                 )
                 num_grad_acc_steps = len(batch_packed)
+                
+                if isinstance(config.grpo.off_policy, TBConfig):
+                    num_steps_per_logZ = num_grad_acc_steps // K
+                    logZ = 0.0
 
                 time_1 = time.time()
                 total_time_packing += time_1 - time_0
@@ -244,7 +255,7 @@ def train(config: TrainingConfig):
                     batch = batch_packed[grad_acc_step]
 
                     # Only compute logprobs if not using vllm logprobs or if the batch doesn't have them
-                    if config.recompute_logprobs:
+                    if config.recompute_logprobs or isinstance(config.grpo.off_policy, TBConfig):
                         logger.debug(f"log prob grad_acc_step {grad_acc_step} / {num_grad_acc_steps}, batch: {batch['input_ids'].shape}")
                         input_ids = batch["input_ids"].to("cuda")
 
@@ -253,11 +264,17 @@ def train(config: TrainingConfig):
 
                         batch["logprobs"] = per_token_logps.to("cpu")
 
-                    if config.grpo.kl_coef is not None:
+                    if config.grpo.kl_coef is not None or isinstance(config.grpo.off_policy, TBConfig):
                         logger.debug(f"kl grad_acc_step {grad_acc_step} / {num_grad_acc_steps}, batch: {batch['input_ids'].shape}")
                         input_ids = batch["input_ids"].to("cuda")
                         per_token_logps_reference = get_logprobs(model_reference, input_ids, batch["position_ids"], batch["temperature"])
                         batch["ref_logprobs"] = per_token_logps_reference.to("cpu")
+
+                    if isinstance(config.grpo.off_policy, TBConfig):
+                        logZ = logZ + batch["rewards"] + config.grpo.off_policy.beta * (batch["ref_logprobs"].sum(1) - batch["logprobs"].sum(1))
+                        if (grad_acc_step+1) % num_steps_per_logZ == 0:
+                            logZ_list.append(logZ.sum() / K)
+                            logZ = 0.0
 
                 data.append(batch_packed)
 
@@ -310,6 +327,9 @@ def train(config: TrainingConfig):
 
             # Now here's the complete grad_acc_step loop WITHOUT the WandB logging inside it:
             for grad_acc_step in range(num_grad_acc_steps):
+                logZ_batch = 0.0
+                if isinstance(config.grpo.off_policy, TBConfig):
+                    logZ_batch = (logZ_list[grad_acc_step // num_steps_per_logZ]).to("cuda")
                 logger.debug(f"training grad_acc_step {grad_acc_step} / {num_grad_acc_steps}")
                 batch = data_per_rollout[grad_acc_step]
 
@@ -365,8 +385,11 @@ def train(config: TrainingConfig):
                 pg_loss, clip_ratio = grpo_loss(
                     logits,
                     input_ids,
+                    batch["rewards"].to("cuda"),
                     advantages,
+                    logZ_batch,
                     original_logprobs,
+                    batch["ref_logprobs"].to("cuda"),
                     loss_mask,
                     batch["temperature"],
                     max_tokens,

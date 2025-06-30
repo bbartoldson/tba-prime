@@ -106,14 +106,22 @@ class RatioConfig(BaseGRPOVariantConfig):
     clip_ratio: Annotated[float, Field(default=8.0)]
 
 
-GRPOVariantsConfig: TypeAlias = Union[ClippingConfig, KlCovConfig, RatioConfig]
+class TBConfig(BaseGRPOVariantConfig):
+    """Configures TB loss."""
+
+    type: Annotated[Literal["tb"], Field(default="tb")]
+    beta: Annotated[float, Field(default=0.1)]
+    n: Annotated[int, Field(default=16, ge=1, description="Number of output sequences to return for the given prompt.")]
+
+
+GRPOVariantsConfig: TypeAlias = Union[ClippingConfig, KlCovConfig, RatioConfig, TBConfig]
 
 
 class GRPOLossConfig(BaseConfig):
     """Configures the GRPO loss."""
 
     # The GRPO variant configuration
-    off_policy: GRPOVariantsConfig = RatioConfig()
+    off_policy: GRPOVariantsConfig = TBConfig() #RatioConfig()
 
     kl_coef: Annotated[float | None, Field(default=None)]
     entropy_loss_coeff: Annotated[float, Field(default=0)]
