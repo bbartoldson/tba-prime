@@ -5,15 +5,15 @@ max_batch_size = 96
 project = "math-debug"
 
 [model]
-name = "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"
-max_model_len = 2048
+name = "Qwen/Qwen2.5-1.5B-Instruct"
+max_model_len = 1024
 
 [data]
-name = "justus27/math-hendrycks-genesys-format"
+name = "/usr/workspace/venkatraman1/data/gsm8k-genesys/train"
 
 [parallel]
 dp = 6
 
 [rl]
-ckpt_path = "checkpoints"
+ckpt_path = "/usr/workspace/venkatraman1/checkpoints"
 clean_ckpt_path = true

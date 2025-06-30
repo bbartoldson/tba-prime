@@ -271,7 +271,7 @@ def train(config: TrainingConfig):
                         batch["ref_logprobs"] = per_token_logps_reference.to("cpu")
 
                     if isinstance(config.grpo.off_policy, TBConfig):
-                        logZ = logZ + batch["rewards"] + config.grpo.off_policy.beta * (batch["ref_logprobs"].sum(1) - batch["logprobs"].sum(1))
+                        logZ = logZ + batch["rewards"] + config.grpo.off_policy.beta * (batch["loss_mask"][:, 1:]*(batch["ref_logprobs"] - batch["logprobs"])).sum(1)
                         if (grad_acc_step+1) % num_steps_per_logZ == 0:
                             logZ_list.append(logZ.sum() / K)
                             logZ = 0.0
@@ -434,6 +434,8 @@ def train(config: TrainingConfig):
 
             logger.debug(f"loss: {loss_batch.item()}, grad_norm: {grad_norm.item()}")
 
+            if isinstance(config.grpo.off_policy, TBConfig):
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 0.1)
             optimizer.step()
             optimizer.zero_grad()
 
