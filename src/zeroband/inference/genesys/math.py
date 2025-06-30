@@ -11,7 +11,7 @@ def compute_math_reward(completion: str, verification_info: Dict):
     if "</think>" in model_response:
         model_solution = model_response.split("</think>")[1]
     else:
-        return 0
+        model_solution = model_response #return 0
 
     model_answer = extract_answer(model_solution)
     if model_answer is None:

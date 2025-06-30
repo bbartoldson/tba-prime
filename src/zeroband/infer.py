@@ -18,8 +18,9 @@ import numpy as np
 import pyarrow.parquet as pq
 import requests
 import torch
-from datasets import load_dataset
+from datasets import load_dataset, load_from_disk
 from toploc.utils import sha256sum
+import zeroband.vllm_08_shim # FIX?
 from vllm import SamplingParams, TokensPrompt
 from huggingface_hub import snapshot_download
 
@@ -85,7 +86,7 @@ def inference(config: InferenceConfig):
     # Initialize dataset
     logger.info(f"Initializing dataset (name={config.data.name}, split={config.data.split})")
     start_time = time.time()
-    dataset = load_dataset(config.data.name, split=config.data.split)
+    dataset = load_from_disk(config.data.name)#load_dataset(config.data.name, split=config.data.split)
 
     if not config.rewards.compute_reward:
         logger.info("Reward computation is disabled, setting task_type to null_reward")
