@@ -110,7 +110,8 @@ class TBConfig(BaseGRPOVariantConfig):
     """Configures TB loss."""
 
     type: Annotated[Literal["tb"], Field(default="tb")]
-    beta: Annotated[float, Field(default=0.1)]
+    beta: Annotated[float, Field(default=0.05, description="KL reg coefficient for p with p_ref.")]
+    beta_q: Annotated[float, Field(default=0.1, description="KL reg coefficient for q with p (EM only).")]
     n: Annotated[int, Field(default=16, ge=1, description="Number of output sequences to return for the given prompt.")]
 
 

@@ -20,6 +20,8 @@ def grpo_loss(
     temperature: float,
     max_tokens: int,
     grpo_loss_config: GRPOVariantsConfig,
+    beta_q = False,
+    ref_loss_mask = None,
 ) -> tuple[Tensor, Tensor | None]:
     if isinstance(grpo_loss_config, ClippingConfig):
         return grpo_loss_clip(
@@ -62,6 +64,10 @@ def grpo_loss(
             grpo_loss_config.highest_entropy_ratio_loss,
         )
     elif isinstance(grpo_loss_config, TBConfig):
+        if beta_q:
+            beta = grpo_loss_config.beta_q
+        else:
+            beta = grpo_loss_config.beta
         return grpo_loss_tb(
             logits,
             input_ids,
@@ -71,7 +77,8 @@ def grpo_loss(
             loss_mask,
             temperature,
             max_tokens,
-            grpo_loss_config.beta,
+            beta,
+            ref_loss_mask,
         )
     else:
         raise ValueError(f"Invalid grpo_loss_type: {grpo_loss_config.type}")
@@ -88,6 +95,7 @@ def grpo_loss_tb(
     temperature: float,
     max_tokens: int,
     beta: float, # reward temperature
+    ref_loss_mask = None,
 ) -> tuple[Tensor, None]:
     """
     DeepSeek Math Loss: https://arxiv.org/abs/2402.03300
@@ -104,6 +112,10 @@ def grpo_loss_tb(
     input_ids = input_ids[:, 1:]
     #rewards = rewards[:, 1:]
     loss_mask = loss_mask[:, 1:]
+    if ref_loss_mask is None:
+        ref_loss_mask = loss_mask
+    else:
+        ref_loss_mask = ref_loss_mask[:, 1:]
 
     # from the logits we drop the last logits because it corresponds to the next token that will be sample but is not here yet
     logits = logits[:, :-1, :]  # (B, L-1, V), exclude the last logit: it corresponds to the next token prediction
@@ -113,29 +125,12 @@ def grpo_loss_tb(
     logits = logits / temperature
     per_token_logps = selective_log_softmax(logits, input_ids)
     masked_per_token_logps = per_token_logps * loss_mask
-    masked_ref_logprobs = ref_logprobs * loss_mask
+    masked_ref_logprobs = ref_logprobs * ref_loss_mask
 
     residuals = (logZ_batch + beta * (masked_per_token_logps.sum(1) - masked_ref_logprobs.sum(1)) - rewards)**2
-    loss = residuals.sum() / (2 * beta)
+    loss = residuals.sum() / (2 * beta * max_tokens)
     return loss, None
-
-    coef_1 = torch.clamp(torch.exp(per_token_logps - original_logprobs), 0, clip_ratio)
-
-    coef_2 = torch.clamp(coef_1, 1 - epsilon_low, 1 + epsilon_high)
-    per_token_loss1 = -coef_1 * advantages
-    per_token_loss2 = -coef_2 * advantages
-    per_token_loss = torch.max(per_token_loss1, per_token_loss2)
-
-    is_clipped = (per_token_loss1 < per_token_loss2).float()
-    clip_ratio = _apply_mask(is_clipped, loss_mask, max_tokens)
-
-    if highest_entropy_percentage < 1.0:
-        loss_mask = highest_entropy_mask(logits, loss_mask, highest_entropy_percentage)
-
-    loss = _apply_mask(per_token_loss, loss_mask, max_tokens)
-
-    return loss, clip_ratio
-
+    
 
 @jaxtyped(typechecker=typechecker)
 def grpo_loss_clip(

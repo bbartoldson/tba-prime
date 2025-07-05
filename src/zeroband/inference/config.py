@@ -279,6 +279,14 @@ class DataConfig(BaseConfig):
         ),
     ]
 
+    privileged_template: Annotated[
+        str,
+        Field(
+            default="{prompt}\n\n<privileged> You also secretly know the Ground-truth answer: \n{answer}\n\n You should generate step by step solution to reach this ground truth. Do NOT directly predict the answer, first always generate step by step reasoning</privileged>\n",
+            description="Privileged template for EM posterior",
+        ),
+    ]
+
     difficulty_filtering: Annotated[DifficultyFilteringConfig | None, Field(default=None)]
 
     def __str__(self) -> str:

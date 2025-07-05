@@ -45,18 +45,23 @@ def get_parquet_table(
     enable_logprobs: bool,
     seeds: list[int],
     temperature: float,
+    ground_truths: list[str] = None,
 ) -> pa.Table:
     # Iterator over proofs
     proof_iter = iter(proofs)
 
     # Create flattened list of records for PyArrow table
     records = []
-    for request_output, request_rewards, prompt, target_length, problem in zip(
+    if ground_truths is None:
+        ground_truths = prompts
+
+    for request_output, request_rewards, prompt, target_length, problem, ground_truth in zip(
         request_outputs,
         request_rewards,
         prompts,
         target_lengths,
         problems,
+        ground_truths,
     ):
         assert request_output.request_id == request_rewards.request_id
         for output, reward, seed in zip(request_output.outputs, request_rewards.rewards, seeds):
@@ -86,6 +91,7 @@ def get_parquet_table(
                     "task_type": request_rewards.task_type,
                     "seed": seed,
                     "temperature": temperature,
+                    "ground_truth": ground_truth,
                 }
             )
 
