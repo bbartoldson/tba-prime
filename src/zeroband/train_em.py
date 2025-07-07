@@ -19,6 +19,7 @@ from torch.distributed.fsdp import MixedPrecisionPolicy, fully_shard
 from zeroband.training import envs
 from zeroband.training.checkpoint import TrainingProgress, load_checkpoint_fsdp_state, save_checkpoint_fsdp_state, save_ckpt_for_rollout
 from zeroband.training.config import Config as TrainingConfig
+from zeroband.training.config import TBConfig
 from zeroband.training.data import BatchOutput, DatasetOutput, get_dataloader, packed_batch
 from zeroband.training.logger import setup_logger
 from zeroband.training.loss import entropy_loss, grpo_loss, kl_penalty, selective_log_softmax
@@ -33,7 +34,6 @@ from zeroband.training.utils import (
     reshard_module,
     wake_up_model_from_cpu,
 )
-from zeroband.training.config import ClippingConfig, GRPOVariantsConfig, KlCovConfig, RatioConfig, TBConfig
 from zeroband.training.world_info import WorldInfo, get_world_info
 from zeroband.utils.models import ModelType, get_model_and_tokenizer
 from zeroband.utils.monitor import setup_monitor
@@ -226,7 +226,7 @@ def train(config: TrainingConfig):
                 infer_step = max(og_infer_step, 0)
                 wake_up_model_from_cpu(model_for_logprob_only, tensor_offloaded_repository[infer_step])
 
-                #if og_infer_step == infer_step:
+                # if og_infer_step == infer_step:
                 #    del tensor_offloaded_repository[infer_step]
 
             data: list[list[BatchOutput]] = []
@@ -246,7 +246,7 @@ def train(config: TrainingConfig):
                     batch_rollout, config.data.seq_length, tokenizer.pad_token_id, config.train.micro_bs, config.collate_mode, em=True
                 )
                 num_grad_acc_steps = len(batch_packed)
-                
+
                 if isinstance(config.grpo.off_policy, TBConfig):
                     num_steps_per_logZ = num_grad_acc_steps // K
                     logZ_Q = 0.0
@@ -275,8 +275,15 @@ def train(config: TrainingConfig):
                         batch["ref_logprobs"] = per_token_logps_reference.to("cpu")
 
                     if isinstance(config.grpo.off_policy, TBConfig):
-                        logZ_Q = logZ_Q + batch["rewards"] + config.grpo.off_policy.beta_q * ((batch["loss_mask"][:, 1:]*batch["ref_logprobs"]) - (batch["priv_loss_mask"][:, 1:]*batch["logprobs"])).sum(1)
-                        if (grad_acc_step+1) % num_steps_per_logZ == 0:
+                        logZ_Q = (
+                            logZ_Q
+                            + batch["rewards"]
+                            + config.grpo.off_policy.beta_q
+                            * (
+                                (batch["loss_mask"][:, 1:] * batch["ref_logprobs"]) - (batch["priv_loss_mask"][:, 1:] * batch["logprobs"])
+                            ).sum(1)
+                        )
+                        if (grad_acc_step + 1) % num_steps_per_logZ == 0:
                             logZ_Q_list.append(logZ_Q.sum() / K)
                             logZ_Q = 0.0
 
@@ -293,12 +300,15 @@ def train(config: TrainingConfig):
                 reshard_module(model_for_logprob_only)
                 offload_model_to_cpu(model_for_logprob_only)
 
-            avg_logZ_Q_step = None
-            if isinstance(config.grpo.off_policy, TBConfig):
-                with torch.no_grad():
-                    avg_logZ_Q_step = torch.stack(logZ_Q_list).mean().to("cuda")
-                    dist.all_reduce(avg_logZ_Q_step, op=dist.ReduceOp.SUM)
-                    avg_logZ_Q_step /= world_info.world_size
+            off_policy_z  = logZ_Q_list[0::2]
+            on_policy_z = logZ_Q_list[1::2]
+            with torch.no_grad():
+                avg_logZ_on  = torch.stack(on_policy_z).mean().to("cuda")
+                avg_logZ_off = torch.stack(off_policy_z).mean().to("cuda")
+                dist.all_reduce(avg_logZ_on,  op=dist.ReduceOp.SUM)
+                dist.all_reduce(avg_logZ_off, op=dist.ReduceOp.SUM)
+                avg_logZ_on  /= world_info.world_size
+                avg_logZ_off /= world_info.world_size
 
             logprobs_aware_iterator = iter(data)
 
@@ -411,7 +421,7 @@ def train(config: TrainingConfig):
                     max_tokens,
                     config.grpo.off_policy,
                     beta_q=True,
-                    ref_loss_mask=ref_loss_mask
+                    ref_loss_mask=ref_loss_mask,
                 )
 
                 with torch.no_grad() if config.grpo.entropy_loss_coeff == 0 else nullcontext():
@@ -437,7 +447,7 @@ def train(config: TrainingConfig):
                 loss_batch += loss.detach().clone()
 
                 metric_averager.update("losses/E_loss", pg_loss.detach().clone())
-                #metric_averager.update("losses/entropy_loss", entropy.detach().clone())
+                # metric_averager.update("losses/entropy_loss", entropy.detach().clone())
 
                 if clip_ratio is not None:
                     metric_averager.update("losses/clip_ratio", clip_ratio.detach().clone())
@@ -448,12 +458,12 @@ def train(config: TrainingConfig):
 
             dist.all_reduce(loss_batch, op=dist.ReduceOp.AVG)
 
-            #grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.optim.grad_norm_clip).full_tensor()  # type: ignore (is a dtensor)
+            # grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), config.optim.grad_norm_clip).full_tensor()  # type: ignore (is a dtensor)
 
-            logger.debug(f"loss: {loss_batch.item()}") #, grad_norm: {grad_norm.item()}")
+            logger.debug(f"loss: {loss_batch.item()}")  # , grad_norm: {grad_norm.item()}")
 
-            #optimizer.step()
-            #optimizer.zero_grad()
+            optimizer.step()
+            optimizer.zero_grad()
 
             logger.debug("E optimizer step")
 
@@ -474,7 +484,7 @@ def train(config: TrainingConfig):
                 "train/inner_lr": inner_lr,
                 "train/E_total_tokens": training_progress.total_tokens,
                 "train/total_samples": training_progress.total_samples,
-                #"losses/E_grad_norm": grad_norm.item(),
+                # "losses/E_grad_norm": grad_norm.item(),
                 "lengths/E_padding_proportion": padding_proportion,
             }
 
@@ -488,7 +498,7 @@ def train(config: TrainingConfig):
                 f"sample_reward: {metric_averager['rewards/sample_reward'].item():.4f}, "
             )
 
-            del loss_batch#, grad_norm
+            del loss_batch  # , grad_norm
 
             tokens_per_second = perf_counter.get_tokens_per_second()
             if tokens_per_second is not None:
@@ -504,10 +514,10 @@ def train(config: TrainingConfig):
 
                 log += f", tokens_per_second: {tokens_per_second:.2f}, tokens_per_second_per_gpu: {tokens_per_second_per_gpu:.2f}, mfu: {mfu:.2f}"
 
-            if avg_logZ_Q_step is not None:
-                metrics["rewards/avg_logZ_Q"] = avg_logZ_Q_step.item()
-                log += f", avg_logZ_Q: {avg_logZ_Q_step.item():.4f}"
-            
+            metrics["rewards/logZ_Q_on_policy"] = avg_logZ_on.item()
+            metrics["rewards/logZ_Q_off_policy"] = avg_logZ_off.item()
+            log += f", logZ_Q_on_policy: {avg_logZ_on.item():.4f}"
+
             if world_info.rank == 0:
                 monitor.log(metrics)
 
@@ -534,7 +544,7 @@ def train(config: TrainingConfig):
                 logger.debug(f"start rollout step {rollout_step} / {config.optim.step_per_rollout}")
                 time_data_loading = time.time()
 
-                #batch_rollout: list[DatasetOutput] = next(train_dataloader_iterator)
+                # batch_rollout: list[DatasetOutput] = next(train_dataloader_iterator)
                 time_data_loading = time.time() - time_data_loading
                 total_time_data_loading += time_data_loading
 
@@ -544,7 +554,7 @@ def train(config: TrainingConfig):
                     batch_rollout, config.data.seq_length, tokenizer.pad_token_id, config.train.micro_bs, config.collate_mode, em=True
                 )
                 num_grad_acc_steps = len(batch_packed)
-                
+
                 if isinstance(config.grpo.off_policy, TBConfig):
                     num_steps_per_logZ = num_grad_acc_steps // K
                     logZ_P = 0.0
@@ -573,8 +583,13 @@ def train(config: TrainingConfig):
                         batch["ref_logprobs"] = per_token_logps_reference.to("cpu")
 
                     if isinstance(config.grpo.off_policy, TBConfig):
-                        logZ_P = logZ_P + batch["rewards"] + config.grpo.off_policy.beta * ((batch["loss_mask"][:, 1:]*batch["ref_logprobs"]) - (batch["loss_mask"][:, 1:]*batch["logprobs"])).sum(1)
-                        if (grad_acc_step+1) % num_steps_per_logZ == 0:
+                        logZ_P = (
+                            logZ_P
+                            + batch["rewards"]
+                            + config.grpo.off_policy.beta
+                            * ((batch["loss_mask"][:, 1:] * batch["ref_logprobs"]) - (batch["loss_mask"][:, 1:] * batch["logprobs"])).sum(1)
+                        )
+                        if (grad_acc_step + 1) % num_steps_per_logZ == 0:
                             logZ_P_list.append(logZ_P.sum() / K)
                             logZ_P = 0.0
 
@@ -591,12 +606,15 @@ def train(config: TrainingConfig):
                 reshard_module(model_for_logprob_only)
                 offload_model_to_cpu(model_for_logprob_only)
 
-            avg_logZ_P_step = None
-            if isinstance(config.grpo.off_policy, TBConfig):
-                with torch.no_grad():
-                    avg_logZ_P_step = torch.stack(logZ_P_list).mean().to("cuda")
-                    dist.all_reduce(avg_logZ_P_step, op=dist.ReduceOp.SUM)
-                    avg_logZ_P_step /= world_info.world_size
+            on_policy_z  = logZ_P_list[0::2]
+            off_policy_z = logZ_P_list[1::2]
+            with torch.no_grad():
+                avg_logZ_on  = torch.stack(on_policy_z).mean().to("cuda")
+                avg_logZ_off = torch.stack(off_policy_z).mean().to("cuda")
+                dist.all_reduce(avg_logZ_on,  op=dist.ReduceOp.SUM)
+                dist.all_reduce(avg_logZ_off, op=dist.ReduceOp.SUM)
+                avg_logZ_on  /= world_info.world_size
+                avg_logZ_off /= world_info.world_size
 
             logprobs_aware_iterator = iter(data)
 
@@ -734,7 +752,7 @@ def train(config: TrainingConfig):
                 loss_batch += loss.detach().clone()
 
                 metric_averager.update("losses/M_loss", pg_loss.detach().clone())
-                #metric_averager.update("losses/entropy_loss", entropy.detach().clone())
+                # metric_averager.update("losses/entropy_loss", entropy.detach().clone())
 
                 if clip_ratio is not None:
                     metric_averager.update("losses/clip_ratio", clip_ratio.detach().clone())
@@ -801,10 +819,10 @@ def train(config: TrainingConfig):
 
                 log += f", tokens_per_second: {tokens_per_second:.2f}, tokens_per_second_per_gpu: {tokens_per_second_per_gpu:.2f}, mfu: {mfu:.2f}"
 
-            if avg_logZ_P_step is not None:
-                metrics["rewards/avg_logZ_P"] = avg_logZ_P_step.item()
-                log += f", avg_logZ_P: {avg_logZ_P_step.item():.4f}"
-            
+            metrics["rewards/logZ_P_on_policy"] = avg_logZ_on.item()
+            metrics["rewards/logZ_P_off_policy"] = avg_logZ_off.item()
+            log += f", logZ_P_on_policy: {avg_logZ_on.item():.4f}"
+
             if world_info.rank == 0:
                 monitor.log(metrics)
 
