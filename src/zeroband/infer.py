@@ -1,7 +1,3 @@
-# (Jack): This is an umerged patch to fix a bug in vllm https://github.com/vllm-project/vllm/pull/19940
-# This can be removed once the patch is merged and vllm is updated.
-import zeroband.inference.monkeypatch_sampling_metadata  # noqa: F401
-
 import json
 import multiprocessing as mp
 import os
@@ -10,8 +6,6 @@ import time
 from pathlib import Path
 import uuid
 
-# Import environment before any other imports
-# ruff: noqa: I001
 from zeroband.inference import envs
 
 import numpy as np
@@ -20,38 +14,45 @@ import requests
 import torch
 from datasets import load_dataset, load_from_disk
 from toploc.utils import sha256sum
-import zeroband.vllm_08_shim # FIX?
-from vllm import SamplingParams, TokensPrompt
+
 from huggingface_hub import snapshot_download
 
-from zeroband.utils.pydantic_config import parse_argv
-from zeroband.eval.utils import run_benchmark
 from zeroband.inference.config import Config as InferenceConfig
-from zeroband.inference.parquet import get_parquet_table
-from zeroband.inference.pipeline import all_reduce, patch_model_load, setup_comm, setup_hooks
-from zeroband.inference.rewards import compute_vllm_rewards
-from zeroband.inference.toploc import setup_toploc_cache
-from zeroband.inference.toploc2 import Toploc2Sampler
-from zeroband.utils.monitor import setup_monitor
-from zeroband.inference.utils import (
-    setup_model,
-    filter_data_by_prompt_length,
-    reload_checkpoint,
-    reload_model_weights,
-    compute_max_batch_size,
-    get_inference_input_output_flops,
-    generate_target_lengths,
-    format_prompts,
-)
+from zeroband.utils.pydantic_config import parse_argv
 from zeroband.training.mp import EnvWrapper
 from zeroband.utils.utils import clean_exit
 from zeroband.inference.logger import setup_logger
 
-
 @clean_exit
 def inference(config: InferenceConfig):
-    # Initialize the logger
+    # (Jack): This is an umerged patch to fix a bug in vllm https://github.com/vllm-project/vllm/pull/19940
+    # This can be removed once the patch is merged and vllm is updated.
+    import zeroband.inference.monkeypatch_sampling_metadata 
+    import zeroband.vllm_08_shim # FIX?
+    from vllm import SamplingParams, TokensPrompt
+    from zeroband.eval.utils import run_benchmark
+    from zeroband.inference.parquet import get_parquet_table
+    from zeroband.inference.pipeline import all_reduce, patch_model_load, setup_comm, setup_hooks
+    from zeroband.inference.rewards import compute_vllm_rewards
+    from zeroband.inference.toploc import setup_toploc_cache
+    from zeroband.inference.toploc2 import Toploc2Sampler
+    from zeroband.utils.monitor import setup_monitor
+
+    from zeroband.inference.utils import (
+        setup_model,
+        filter_data_by_prompt_length,
+        reload_checkpoint,
+        reload_model_weights,
+        compute_max_batch_size,
+        get_inference_input_output_flops,
+        generate_target_lengths,
+        format_prompts,
+    )
     dp_rank = int(os.environ.get("DP_RANK", 0))
+    device = os.environ.get("CUDA_VISIBLE_DEVICES", 0)
+    print(f'Process loaded with rank {dp_rank} with GPU: {device}')
+
+    # Initialize the logger
     logger = setup_logger(config.log, parallel_config=config.parallel, dp_rank=dp_rank)
     logger.info("Starting inference")
 
@@ -537,6 +538,7 @@ def main(config: InferenceConfig) -> list[mp.Process]:
         gpu_ids = envs.CUDA_VISIBLE_DEVICES
         gpu_ids_per_rank = [gpu_ids[i : i + config.parallel.tp] for i in range(0, len(gpu_ids), config.parallel.tp)]
         for rank, gpu_ids in enumerate(gpu_ids_per_rank):
+            print(f'Process rank: {rank} with GPU: {",".join(map(str, gpu_ids))}')
             env = {"CUDA_VISIBLE_DEVICES": ",".join(map(str, gpu_ids)), "DP_RANK": str(rank)}
             process = mp.Process(target=EnvWrapper(inference, env), args=(config,))
             processes.append(process)
@@ -546,6 +548,7 @@ def main(config: InferenceConfig) -> list[mp.Process]:
         inference(config)
 
     # Start all processes
+    print(f'Running {len(processes)} processes')
     for process in processes:
         process.start()
 
