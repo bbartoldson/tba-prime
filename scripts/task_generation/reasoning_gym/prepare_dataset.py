@@ -28,6 +28,7 @@ def build_dataset(task: str, size: int, seed: int) -> Dataset:
         verification_info = {
             "dataset_name": task,
             "entry": entry,
+            "ground_truth": entry["answer"],
         }
 
         converted.append(

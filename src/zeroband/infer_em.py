@@ -154,7 +154,8 @@ def inference(config: InferenceConfig):
     # Initialize dataset
     logger.info(f"Initializing dataset (name={config.data.name}, split={config.data.split})")
     start_time = time.time()
-    dataset = load_dataset(config.data.name, split=config.data.split) #load_from_disk(config.data.name)#load_dataset(config.data.name, split=config.data.split)
+    # dataset = load_dataset(config.data.name, split=config.data.split) #load_from_disk(config.data.name)#load_dataset(config.data.name, split=config.data.split)
+    dataset = load_from_disk(config.data.name)
 
     if not config.rewards.compute_reward:
         logger.info("Reward computation is disabled, setting task_type to null_reward")
