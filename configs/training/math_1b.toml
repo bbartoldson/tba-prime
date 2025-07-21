@@ -1,0 +1,24 @@
+[monitor.wandb]
+project = "bartolds-math-multinode"
+
+[model]
+name = "Qwen/Qwen2.5-1.5B-Instruct"
+
+[train]
+micro_bs = 4 # change to 8 for H200
+reshard_after_forward = true
+
+[optim]
+batch_size = 256
+step_per_rollout = 1
+
+[optim.optim]
+lr = 3e-6
+
+[data]
+path = "/p/vast1/bartolds/rollouts"
+seq_length = 1024
+
+[ckpt]
+rollout_path = "/p/vast1/bartolds/checkpoints"
+clean_rollout_path = true
