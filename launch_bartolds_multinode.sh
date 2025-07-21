@@ -8,6 +8,15 @@
 NODE1_HOSTNAME="matrix17"  # Replace with actual hostname
 NODE2_HOSTNAME="matrix16"  # Replace with actual hostname
 
+# Check if kill argument is provided
+if [ "$1" = "kill" ]; then
+    echo "Stopping all processes..."
+    ssh $NODE1_HOSTNAME 'pkill -f infer.py'
+    ssh $NODE2_HOSTNAME 'pkill -f infer.py; pkill -f train.py'
+    echo "All processes stopped."
+    exit 0
+fi
+
 echo "Starting multi-node training setup..."
 echo "This script assumes you're running it from a system that can SSH to both nodes"
 echo "Node 1 (${NODE1_HOSTNAME}): 6 GPUs for inference"
