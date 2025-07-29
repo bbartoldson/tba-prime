@@ -1,0 +1,32 @@
+[monitor.wandb]
+project = "math-debug"
+
+[model]
+#name = "Qwen/Qwen2.5-1.5B-Instruct"
+#name = "Qwen/Qwen3-8B"
+name = "Qwen/Qwen2.5-7B-Instruct"
+
+[train]
+micro_bs = 1 # change to 8 for H200
+reshard_after_forward = true
+ac_ckpt = true
+
+[optim]
+batch_size = 256
+step_per_rollout = 1
+
+[optim.optim]
+lr = 3e-6
+
+[data]
+path = "/p/vast1/bartolds/tba-prime/rollouts"
+seq_length = 1024
+
+[ckpt]
+rollout_path = "/p/vast1/bartolds/tba-prime/ckpt"
+clean_rollout_path = true
+
+[grpo.off_policy]
+type = "tb"      #for TB
+beta = 0.001     #0.001 or 0.005, both work well
+#type = "ratio"  #for GRPO

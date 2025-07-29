@@ -1,0 +1,25 @@
+clean_rollout_path = true
+rollout_path = "/p/vast1/bartolds/tba-prime/rollouts"
+#max_batch_size = "auto"
+#max_batch_size = 800
+#max_batch_size = 512
+max_batch_size = 256
+
+[monitor.wandb]
+project = "math-debug"
+
+[model]
+#name = "Qwen/Qwen2.5-1.5B-Instruct"
+#name = "Qwen/Qwen3-8B"
+name = "Qwen/Qwen2.5-7B-Instruct"
+max_model_len = 1024
+
+[data]
+name = "/p/vast1/bartolds/math-hendrycks-genesys-format/data/train_set"
+
+[parallel]
+dp = 2
+
+[rl]
+ckpt_path = "/p/vast1/bartolds/tba-prime/ckpt"
+clean_ckpt_path = true
