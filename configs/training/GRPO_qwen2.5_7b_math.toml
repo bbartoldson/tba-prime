@@ -1,6 +1,6 @@
 [monitor.wandb]
 project = "math-debug"
-name = "TBA"
+name = "GRPO"
 
 [model]
 #name = "Qwen/Qwen2.5-1.5B-Instruct"
@@ -20,14 +20,14 @@ step_per_rollout = 3 # 1
 lr = 3e-6
 
 [data]
-path = "/p/vast1/bartolds/tba-prime/TBA_rollouts"
+path = "/p/vast1/bartolds/tba-prime/rollouts"
 seq_length = 1024
 
 [ckpt]
-rollout_path = "/p/vast1/bartolds/tba-prime/TBA_checkpoints"
+rollout_path = "/p/vast1/bartolds/tba-prime/checkpoints"
 clean_rollout_path = true
 
 [grpo.off_policy]
-type = "tb"      #for TB
-beta = 0.001     #0.001 or 0.005, both work well
-#type = "ratio"  #for GRPO
+#type = "tb"      #for TB
+#beta = 0.001     #0.001 or 0.005, both work well
+type = "ratio"  #for GRPO

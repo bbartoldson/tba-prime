@@ -1,5 +1,5 @@
 clean_rollout_path = true
-rollout_path = "/p/vast1/bartolds/tba-prime/TBA_rollouts"
+rollout_path = "/p/vast1/bartolds/tba-prime/rollouts"
 #max_batch_size = "auto"
 #max_batch_size = 800
 #max_batch_size = 512
@@ -7,7 +7,7 @@ max_batch_size = 256
 
 [monitor.wandb]
 project = "math-debug"
-name = "TBA_infer"
+name = "GRPO_infer"
 
 [model]
 #name = "Qwen/Qwen2.5-1.5B-Instruct"
@@ -22,5 +22,5 @@ name = "/p/vast1/bartolds/math-hendrycks-genesys-format/data/train_set"
 dp = 4
 
 [rl]
-ckpt_path = "/p/vast1/bartolds/tba-prime/TBA_checkpoints"
+ckpt_path = "/p/vast1/bartolds/tba-prime/checkpoints"
 clean_ckpt_path = true

@@ -19,6 +19,7 @@ from torch.distributed.fsdp import MixedPrecisionPolicy, fully_shard
 from zeroband.training import envs
 from zeroband.training.checkpoint import TrainingProgress, load_checkpoint_fsdp_state, save_checkpoint_fsdp_state, save_ckpt_for_rollout
 from zeroband.training.config import Config as TrainingConfig
+from zeroband.training.config import TBConfig
 from zeroband.training.data import BatchOutput, DatasetOutput, get_dataloader, packed_batch
 from zeroband.training.logger import setup_logger
 from zeroband.training.loss import entropy_loss, grpo_loss, kl_penalty, selective_log_softmax
@@ -33,7 +34,6 @@ from zeroband.training.utils import (
     reshard_module,
     wake_up_model_from_cpu,
 )
-from zeroband.training.config import ClippingConfig, GRPOVariantsConfig, KlCovConfig, RatioConfig, TBConfig
 from zeroband.training.world_info import WorldInfo, get_world_info
 from zeroband.utils.models import ModelType, get_model_and_tokenizer
 from zeroband.utils.monitor import setup_monitor
@@ -243,7 +243,7 @@ def train(config: TrainingConfig):
                     batch_rollout, config.data.seq_length, tokenizer.pad_token_id, config.train.micro_bs, config.collate_mode
                 )
                 num_grad_acc_steps = len(batch_packed)
-                
+
                 if isinstance(config.grpo.off_policy, TBConfig):
                     num_steps_per_logZ = num_grad_acc_steps // K
                     logZ = 0.0
@@ -271,8 +271,12 @@ def train(config: TrainingConfig):
                         batch["ref_logprobs"] = per_token_logps_reference.to("cpu")
 
                     if isinstance(config.grpo.off_policy, TBConfig):
-                        logZ = logZ + batch["rewards"] + config.grpo.off_policy.beta * (batch["loss_mask"][:, 1:]*(batch["ref_logprobs"] - batch["logprobs"])).sum(1)
-                        if (grad_acc_step+1) % num_steps_per_logZ == 0:
+                        logZ = (
+                            logZ
+                            + batch["rewards"]
+                            + config.grpo.off_policy.beta * (batch["loss_mask"][:, 1:] * (batch["ref_logprobs"] - batch["logprobs"])).sum(1)
+                        )
+                        if (grad_acc_step + 1) % num_steps_per_logZ == 0:
                             logZ_list.append(logZ.sum() / K)
                             logZ = 0.0
 
@@ -444,7 +448,7 @@ def train(config: TrainingConfig):
 
             logger.debug(f"loss: {loss_batch.item()}, grad_norm: {grad_norm.item()}")
 
-            #if isinstance(config.grpo.off_policy, TBConfig):
+            # if isinstance(config.grpo.off_policy, TBConfig):
             #    torch.nn.utils.clip_grad_norm_(model.parameters(), 0.1)
             optimizer.step()
             optimizer.zero_grad()
@@ -502,7 +506,7 @@ def train(config: TrainingConfig):
             if avg_logZ_step is not None:
                 metrics["rewards/avg_logZ"] = avg_logZ_step.item()
                 log += f", avg_logZ: {avg_logZ_step.item():.4f}"
-            
+
             if world_info.rank == 0:
                 monitor.log(metrics)
 
@@ -530,7 +534,7 @@ def train(config: TrainingConfig):
                 time_shardcast = time.time() - time_shardcast
 
                 time_rollout_delete = time.time()
-                if len(previous_ckpt_rollout) > config.max_async_level:
+                if len(previous_ckpt_rollout) > config.max_async_level + 1:
                     path_to_delete = previous_ckpt_rollout.pop(0)
                     ckpt_step = int(str(path_to_delete).split("_")[-1])
 
