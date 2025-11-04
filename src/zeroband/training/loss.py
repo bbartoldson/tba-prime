@@ -80,7 +80,7 @@ def grpo_loss(
             tb_beta,
             ref_loss_mask,
             original_logprobs,
-            grpo_loss_config.IS,
+            grpo_loss_config.importance_sample,
         )
     else:
         raise ValueError(f"Invalid grpo_loss_type: {grpo_loss_config.type}")
