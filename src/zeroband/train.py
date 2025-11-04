@@ -2,7 +2,7 @@ import logging
 import os
 import shutil
 import time
-from collections import defaultdict
+from collections import Counter, defaultdict
 from contextlib import nullcontext
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -204,14 +204,30 @@ def train(config: TrainingConfig):
         K = config.grpo.off_policy.n
 
     logger.info("Starting training loop")
+    next_reference_reset_step = config.grpo.reference_reset_interval if config.grpo.reference_reset_interval else float("inf")
 
+    # --- Configuration ---
+    tb_beta = config.grpo.off_policy.beta if isinstance(config.grpo.off_policy, TBConfig) else None
     while True:
+        if tb_beta is not None and config.grpo.off_policy.beta_decay_end > 0:
+            beta_decay_end = config.grpo.off_policy.beta_decay_end
+            final_beta = config.grpo.off_policy.beta / 100
+            if config.grpo.off_policy.final_beta is not None:
+                final_beta = config.grpo.off_policy.final_beta
+            decay_schedule = torch.linspace(config.grpo.off_policy.beta, final_beta, beta_decay_end)
+            tb_beta = decay_schedule[min(training_progress.step, beta_decay_end - 1)].item()
+
         time_start = time.time()
 
         total_time_data_loading = 0
         total_time_packing = 0
         if isinstance(config.grpo.off_policy, TBConfig):
             logZ_list = []
+            kl_avg_list = []
+            kl_abs_avg_list = []
+            kl_noClamp_abs_avg_list = []
+            kl_avg_var_list = []
+            kl_max_list = []
 
         # here we want to pre-compute the logprobs with the model before update
         with torch.no_grad():
@@ -245,19 +261,39 @@ def train(config: TrainingConfig):
                 num_grad_acc_steps = len(batch_packed)
 
                 if isinstance(config.grpo.off_policy, TBConfig):
-                    num_steps_per_logZ = num_grad_acc_steps // K
+                    num_steps_per_logZ = K // (config.train.micro_bs * world_info.world_size)
+                    print(f"micro_bs is {config.train.micro_bs} -- i.e., # elements in each grad_acc_step per device")
+                    print(f"steps per logZ is {num_steps_per_logZ} -- i.e., # grad_acc_step per query")
+                    assert num_steps_per_logZ >= 1, f"{num_steps_per_logZ} is not >= 1, change hparams or logZ logic"
+                    assert K % (config.train.micro_bs * world_info.world_size) == 0, (
+                        f"K is not an integer multiple of micro_bs * world_size {config.train.micro_bs, world_info.world_size}, change hparams or logZ logic"
+                    )
                     logZ = 0.0
+                    kl_metric = 0.0
+                    kl_var = 0.0
+                    kl_max = 0.0
+                    kl_abs_metric = 0
+                    kl_noClamp_abs_metric = 0
+
+                    problem_ids_in_window = []
 
                 time_1 = time.time()
                 total_time_packing += time_1 - time_0
 
                 for grad_acc_step in range(num_grad_acc_steps):
                     batch = batch_packed[grad_acc_step]
+                    assert len(batch["input_ids"]) == config.train.micro_bs, (
+                        f"expected {config.train.micro_bs} elements in grad_acc_step, got {len(batch['input_ids'])}"
+                    )
 
                     # Only compute logprobs if not using vllm logprobs or if the batch doesn't have them
                     if config.recompute_logprobs or isinstance(config.grpo.off_policy, TBConfig):
                         logger.debug(f"log prob grad_acc_step {grad_acc_step} / {num_grad_acc_steps}, batch: {batch['input_ids'].shape}")
                         input_ids = batch["input_ids"].to("cuda")
+                        # Ensure input_ids are long type
+                        if input_ids.dtype != torch.long:
+                            logger.warning(f"Converting input_ids from {input_ids.dtype} to torch.long")
+                            input_ids = input_ids.long()
 
                         model_for_logprob = model_for_logprob_only if config.recompute_logprobs else model
                         per_token_logps = get_logprobs(model_for_logprob, input_ids, batch["position_ids"], batch["temperature"])
@@ -267,18 +303,87 @@ def train(config: TrainingConfig):
                     if config.grpo.kl_coef is not None or isinstance(config.grpo.off_policy, TBConfig):
                         logger.debug(f"kl grad_acc_step {grad_acc_step} / {num_grad_acc_steps}, batch: {batch['input_ids'].shape}")
                         input_ids = batch["input_ids"].to("cuda")
+                        # Ensure input_ids are long type
+                        if input_ids.dtype != torch.long:
+                            logger.warning(f"Converting input_ids from {input_ids.dtype} to torch.long")
+                            input_ids = input_ids.long()
                         per_token_logps_reference = get_logprobs(model_reference, input_ids, batch["position_ids"], batch["temperature"])
                         batch["ref_logprobs"] = per_token_logps_reference.to("cpu")
 
                     if isinstance(config.grpo.off_policy, TBConfig):
+                        problem_ids_in_window.extend(batch["problem_ids"])
+
+                        masked_per_token_logps = batch["loss_mask"][:, 1:] * batch["logprobs"]
+                        masked_ref_logprobs = batch["loss_mask"][:, 1:] * batch["ref_logprobs"]
+                        kl_est = masked_per_token_logps - masked_ref_logprobs
+                        kl_noClamp_abs_metric = kl_noClamp_abs_metric + kl_est.detach().abs().sum(1).sum()
+                        kl_est = torch.clamp(kl_est, min=-10, max=10)
+                        kl_abs_metric = kl_abs_metric + kl_est.detach().abs().sum(1).sum()
+                        kl_est = kl_est.sum(1)
+
+                        kl_metric = kl_metric + kl_est.detach().sum()
+                        kl_var = kl_var + (kl_est.detach() ** 2).sum()
+                        kl_max = torch.maximum(torch.tensor(kl_max), torch.max(kl_est))
+
                         logZ = (
-                            logZ
-                            + batch["rewards"]
-                            + config.grpo.off_policy.beta * (batch["loss_mask"][:, 1:] * (batch["ref_logprobs"] - batch["logprobs"])).sum(1)
+                            logZ + batch["rewards"].sum()
+                            # + tb_beta * kl_est   # just average the rewards for now
                         )
                         if (grad_acc_step + 1) % num_steps_per_logZ == 0:
-                            logZ_list.append(logZ.sum() / K)
+                            # All-gather logZ values from all GPUs
+                            logZ = logZ.cuda()
+                            all_logZ = [torch.zeros_like(logZ) for _ in range(world_info.world_size)]
+                            dist.all_gather(all_logZ, logZ)
+
+                            kl_metric = kl_metric.cuda()
+                            all_kl_metric = [torch.zeros_like(kl_metric) for _ in range(world_info.world_size)]
+                            dist.all_gather(all_kl_metric, kl_metric)
+                            kl_avg_list.append(torch.tensor(all_kl_metric).sum().cpu() / K)
+                            kl_metric = 0
+
+                            kl_var = kl_var.cuda()
+                            all_kl_metric = [torch.zeros_like(kl_var) for _ in range(world_info.world_size)]
+                            dist.all_gather(all_kl_metric, kl_var)
+                            kl_avg_var_list.append(torch.tensor(all_kl_metric).sum().cpu() / K - kl_avg_list[-1] ** 2)
+                            kl_var = 0
+
+                            kl_abs_metric = kl_abs_metric.cuda()
+                            all_kl_metric = [torch.zeros_like(kl_abs_metric) for _ in range(world_info.world_size)]
+                            dist.all_gather(all_kl_metric, kl_abs_metric)
+                            kl_abs_avg_list.append(torch.tensor(all_kl_metric).sum().cpu() / K)
+                            kl_abs_metric = 0
+                            kl_noClamp_abs_metric = kl_noClamp_abs_metric.cuda()
+                            all_kl_metric = [torch.zeros_like(kl_noClamp_abs_metric) for _ in range(world_info.world_size)]
+                            dist.all_gather(all_kl_metric, kl_noClamp_abs_metric)
+                            kl_noClamp_abs_avg_list.append(torch.tensor(all_kl_metric).sum().cpu() / K)
+                            kl_noClamp_abs_metric = 0
+
+                            kl_max = kl_max.cuda()
+                            all_kl_max = [torch.zeros_like(kl_max) for _ in range(world_info.world_size)]
+                            dist.all_gather(all_kl_max, kl_max)
+                            kl_max_list.append(torch.max(torch.tensor(all_kl_max)).cpu())
+                            kl_max = 0
+
+                            # this is a check to make sure we have the same problem ID for all contributions to logZ
+                            local_problem_id = torch.tensor([int(x.split("_")[-1]) for x in problem_ids_in_window]).cuda()
+                            all_problem_ids = [torch.zeros_like(local_problem_id) for _ in range(world_info.world_size)]
+                            dist.all_gather(all_problem_ids, local_problem_id)
+                            all_problem_ids = sum([pids.cpu().tolist() for pids in all_problem_ids], [])  # concat list of lists
+                            # Validate that we have exactly K samples from exactly one problem_id
+                            counts = Counter(all_problem_ids)
+                            unique_problems = list(counts.keys())
+                            counts = list(counts.values())
+                            assert len(unique_problems) == 1, (
+                                f"GPU {world_info.rank}: Expected 1 unique id across GPUs, my problems: {local_problem_id}"
+                            )
+                            assert counts[0] == K, (
+                                f"GPU {world_info.rank}: Expected {K} samples for problem_id {unique_problems}, got {counts}"
+                            )
+
+                            logZ_list.append(torch.tensor(all_logZ).sum().cpu() / K)
+                            # print(f"GPU {world_info.rank}: Got logZ {all_logZ} with sum {logZ_list[-1]}",flush=True)
                             logZ = 0.0
+                            problem_ids_in_window = []
 
                 data.append(batch_packed)
 
@@ -295,10 +400,12 @@ def train(config: TrainingConfig):
 
             avg_logZ_step = None
             if isinstance(config.grpo.off_policy, TBConfig):
-                with torch.no_grad():
-                    avg_logZ_step = torch.stack(logZ_list).mean().to("cuda")
-                    dist.all_reduce(avg_logZ_step, op=dist.ReduceOp.SUM)
-                    avg_logZ_step /= world_info.world_size
+                avg_logZ_step = torch.tensor(logZ_list).mean()
+                avg_kl_step = torch.tensor(kl_avg_list).mean()
+                avg_kl_var = torch.tensor(kl_avg_var_list).mean()
+                avg_kl_abs_step = torch.tensor(kl_abs_avg_list).mean()
+                avg_kl_abs_noClamp_step = torch.tensor(kl_noClamp_abs_avg_list).mean()
+                max_kl_step = torch.tensor(kl_max_list).max()
 
             logprobs_aware_iterator = iter(data)
 
@@ -338,13 +445,23 @@ def train(config: TrainingConfig):
 
             # Now here's the complete grad_acc_step loop WITHOUT the WandB logging inside it:
             for grad_acc_step in range(num_grad_acc_steps):
-                logZ_batch = 0.0
+                # logZ_batch = 0.0
+                logZ_batch_reward_only = 0.0
+                effective_tb_beta = None
+                kl_term = 0
                 if isinstance(config.grpo.off_policy, TBConfig):
-                    logZ_batch = (logZ_list[grad_acc_step // num_steps_per_logZ]).to("cuda")
+                    effective_tb_beta = tb_beta
+                    kl_term = kl_avg_list[grad_acc_step // num_steps_per_logZ]
+                    # logZ_batch = (logZ_list[grad_acc_step // num_steps_per_logZ] - effective_tb_beta * kl_term).to("cuda")
+                    logZ_batch_reward_only = (logZ_list[grad_acc_step // num_steps_per_logZ]).to("cuda")
                 logger.debug(f"training grad_acc_step {grad_acc_step} / {num_grad_acc_steps}")
                 batch = data_per_rollout[grad_acc_step]
 
                 input_ids = batch["input_ids"].to("cuda")
+                # Ensure input_ids are long type
+                if input_ids.dtype != torch.long:
+                    logger.warning(f"Converting input_ids from {input_ids.dtype} to torch.long")
+                    input_ids = input_ids.long()
                 if config.normalize_batch_to_token_count:
                     max_tokens = int(sum(batch["seq_lens"]))
                 else:
@@ -401,13 +518,17 @@ def train(config: TrainingConfig):
                     input_ids,
                     batch["rewards"].to("cuda"),
                     advantages,
-                    logZ_batch,
+                    # logZ_batch,
+                    logZ_batch_reward_only,
                     original_logprobs,
                     ref_logp,
                     loss_mask,
                     batch["temperature"],
                     max_tokens,
                     config.grpo.off_policy,
+                    # tb_beta = tb_beta # adaptive_beta_test
+                    tb_beta=effective_tb_beta,
+                    mean_KL=kl_term,
                 )
 
                 with torch.no_grad() if config.grpo.entropy_loss_coeff == 0 else nullcontext():
@@ -456,6 +577,51 @@ def train(config: TrainingConfig):
             logger.debug("optimizer step")
 
             training_progress.step += 1
+
+            # ProRL-style reference model reset
+            if (
+                config.grpo.reference_reset_interval is not None
+                and
+                # (config.grpo.kl_coef is not None or ...)
+                isinstance(config.grpo.off_policy, TBConfig)
+                and training_progress.step >= next_reference_reset_step
+            ):
+                # TB assumes the reference isn't offloaded, unlike GRPO/kl_coef
+                # we could change the code later to work for both
+                assert config.grpo.kl_coef is None, "resetting only works for TB right now"
+
+                logger.info(f"Resetting reference model at step {training_progress.step}")
+
+                # If reference model is offloaded, wake it up first
+                # wake_up_model_from_cpu(model_reference, tensor_offloaded_repository[0])
+
+                # Copy weights from training model to reference model
+                copy_model_weights_fsdp(model, model_reference)
+
+                # Re-offload reference model if it was offloaded
+                # reshard_module(model_reference)
+                # tensor_offloaded_repository[0] = offload_model_to_cpu(model_reference)
+
+                # Update next reset step
+                next_reference_reset_step += config.grpo.reference_reset_interval
+
+                # Log the reset event
+                if world_info.rank == 0:
+                    monitor.log(
+                        {
+                            "step": training_progress.step,
+                            "reference_reset": 1,  # Binary indicator for visualization
+                        }
+                    )
+
+                if config.grpo.reference_reset_opt is not None:
+                    optimizer = torch.optim.AdamW(
+                        params=model.parameters(),
+                        lr=config.optim.optim.lr,
+                        weight_decay=config.optim.optim.weight_decay,
+                        betas=(config.optim.optim.betas1, config.optim.optim.betas2),
+                    )
+
             inner_lr = [group["lr"] for group in optimizer.param_groups][0]
 
             token_per_gpu = inputs_ids_shape[0] * inputs_ids_shape[1] * num_grad_acc_steps
@@ -505,6 +671,12 @@ def train(config: TrainingConfig):
 
             if avg_logZ_step is not None:
                 metrics["rewards/avg_logZ"] = avg_logZ_step.item()
+                metrics["train/tb_beta"] = tb_beta
+                metrics["rewards/avg_KL"] = avg_kl_step.item()
+                metrics["rewards/avg_KL_var"] = avg_kl_var.item()
+                metrics["rewards/max_KL"] = max_kl_step.item()
+                metrics["rewards/avg_kl_abs_step"] = avg_kl_abs_step.item()
+                metrics["rewards/avg_kl_abs_noClamp_step"] = avg_kl_abs_noClamp_step.item()
                 log += f", avg_logZ: {avg_logZ_step.item():.4f}"
 
             if world_info.rank == 0:
@@ -524,6 +696,10 @@ def train(config: TrainingConfig):
                 previous_ckpt_rollout.append(path)
                 t0 = time.time()
                 safetensor_path = save_ckpt_for_rollout(model, tokenizer, path, async_save=config.ckpt.async_save)
+                if training_progress.step in [200, 250, 300, 350, 400, 450, 500]:
+                    final_path = str(path).replace("tba-prime", "tba-prime/final")
+                    final_path = final_path.replace("_checkpoints", "")
+                    _ = save_ckpt_for_rollout(model, tokenizer, Path(final_path), async_save=config.ckpt.async_save)
                 time_rollout_ckpt = time.time() - t0
 
                 time_shardcast = time.time()
@@ -590,6 +766,19 @@ def train(config: TrainingConfig):
 
     logger.info(f"Peak memory: {torch.cuda.max_memory_allocated() / 1024**3:.2f} GB")
     logger.success("Training finished!")
+
+
+def copy_model_weights_fsdp(source_model, target_model):
+    """
+    Copy weights from source model to target model, handling FSDP state.
+    Both models should have the same architecture and FSDP wrapping.
+    """
+    with torch.no_grad():
+        # Get state dicts
+        source_state = source_model.state_dict()
+
+        # Load into target model
+        target_model.load_state_dict(source_state)
 
 
 if __name__ == "__main__":

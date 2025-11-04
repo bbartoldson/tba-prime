@@ -1,0 +1,27 @@
+max_steps = 350
+clean_rollout_path = true
+rollout_path = "a"
+max_batch_size = 128 
+
+[monitor.wandb]
+project = "a"
+name = "a"
+
+[model]
+name = "meta-llama/Llama-3.1-8B-Instruct"
+max_model_len = 4096
+
+[data]
+name = "a"
+
+[parallel]
+dp = 4
+
+[sampling]
+n = 64
+
+[rl]
+async_level = 5 # was default, 2
+ckpt_path = "a"
+clean_ckpt_path = true
+

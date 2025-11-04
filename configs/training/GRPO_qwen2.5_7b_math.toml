@@ -1,30 +1,37 @@
+stop_after_steps = 351 #251
+max_async_level = 5 # was default, 2
+
 [monitor.wandb]
 project = "math-debug"
-name = "GRPO"
+#name = "GRPO_base_async20"
+name = "GRPO_async5_qwen_3072"
 
 [model]
 #name = "Qwen/Qwen2.5-1.5B-Instruct"
 #name = "Qwen/Qwen3-8B"
-name = "Qwen/Qwen2.5-7B-Instruct"
+#name = "Qwen/Qwen2.5-7B-Instruct"
+name = "Qwen/Qwen2.5-7B"
 
 [train]
-micro_bs = 2 # change to 8 for H200
+#micro_bs = 2 # change to 8 for H200
+micro_bs = 1 # change to 1 for 4096
 reshard_after_forward = true
 ac_ckpt = true
 
 [optim]
-batch_size = 256
-step_per_rollout = 3 # 1
+batch_size = 512
+step_per_rollout = 1 
 
 [optim.optim]
-lr = 3e-6
+lr = 1e-6
 
 [data]
-path = "/p/vast1/bartolds/tba-prime/rollouts"
+path = "/p/vast1/bartolds/tba-prime/GRPO_async5_qwen_rollouts"
 seq_length = 1024
 
 [ckpt]
-rollout_path = "/p/vast1/bartolds/tba-prime/checkpoints"
+#rollout_path = "/p/vast1/bartolds/tba-prime/GRPO_async20_checkpoints"
+rollout_path = "/p/vast1/bartolds/tba-prime/GRPO_async5_qwen_checkpoints"
 clean_rollout_path = true
 
 [grpo.off_policy]

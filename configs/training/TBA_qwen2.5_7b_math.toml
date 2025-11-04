@@ -1,33 +1,41 @@
+stop_after_steps = 351 #251
+max_async_level = 5 # was default, 2
+
 [monitor.wandb]
 project = "math-debug"
-name = "TBA"
+name = "TBA_qwen_async5_3072_b0001_k64"
 
 [model]
 #name = "Qwen/Qwen2.5-1.5B-Instruct"
 #name = "Qwen/Qwen3-8B"
-name = "Qwen/Qwen2.5-7B-Instruct"
+#name = "Qwen/Qwen2.5-7B-Instruct"
+#name = "meta-llama/Llama-3.1-8B-Instruct"
+name = "Qwen/Qwen2.5-7B"
 
 [train]
-micro_bs = 2 # change to 8 for H200
+#micro_bs = 2 # change to 8 for H200
+micro_bs = 1 # change to 1 for 4096
 reshard_after_forward = true
 ac_ckpt = true
 
 [optim]
-batch_size = 256
-step_per_rollout = 3 # 1
+batch_size = 512
+step_per_rollout = 1 
 
 [optim.optim]
-lr = 3e-6
+lr = 1e-6
 
 [data]
-path = "/p/vast1/bartolds/tba-prime/TBA_rollouts"
+path = "/p/vast1/bartolds/tba-prime/TBA_qwen_async5_rollouts"
 seq_length = 1024
 
 [ckpt]
-rollout_path = "/p/vast1/bartolds/tba-prime/TBA_checkpoints"
+rollout_path = "/p/vast1/bartolds/tba-prime/TBA_qwen_async5_checkpoints"
 clean_rollout_path = true
 
 [grpo.off_policy]
+#n = 64
 type = "tb"      #for TB
-beta = 0.001     #0.001 or 0.005, both work well
+beta = 0.0001     #0.001 or 0.005, both work well
+#beta = 0.00001     #0.001 or 0.005, both work well
 #type = "ratio"  #for GRPO

@@ -1,0 +1,29 @@
+max_steps = 200
+clean_rollout_path = true
+rollout_path = "a"
+max_batch_size = 128 
+
+[monitor.wandb]
+project = "a"
+name = "a"
+
+[model]
+name = "Qwen/Qwen2.5-7B"
+max_model_len = 4096
+
+[data]
+name = "/p/vast1/bartolds/tba-prime/datasets/countdown/train"
+
+[parallel]
+dp = 4
+
+[sampling]
+n = 64
+
+[rl]
+async_level = 2
+ckpt_path = "a"
+clean_ckpt_path = true
+
+[eval]
+benchmarks=["countdown"]

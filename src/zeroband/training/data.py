@@ -1,14 +1,15 @@
+import os
+import re
 import time
 from pathlib import Path
-from typing import Any, Generator, TypedDict, List, Tuple
-import re
+from typing import Any, Generator, List, TypedDict
 
+import pyarrow as pa
 import pyarrow.parquet as pq
 import torch
 import torch.distributed as dist
 from jaxtyping import Float, Int
 from pyarrow import dataset as ds
-import pyarrow as pa
 from torch.utils.data import DataLoader, IterableDataset
 
 from zeroband.training import envs
@@ -34,6 +35,7 @@ class DatasetOutput(TypedDict):
     target_lengths: Int[torch.Tensor, "1"]
     temperature: float
     task_type: str
+    problem_id: str
 
 
 class FakeTokenizedDataset(IterableDataset):
@@ -97,6 +99,11 @@ def _get_dataset_from_files_step(
     wait_count = 0
 
     while True:
+        if "countdown" in str(step_path):
+            try:
+                os.stat(step_path)
+            except:
+                pass
         files = list(step_path.glob("*.parquet"))
         if envs.TRAINING_ENABLE_ACCEPTED_CHECK:
             accepted_flags = set(i.stem for i in step_path.glob("accepted/*.parquet"))
@@ -246,6 +253,7 @@ class ParquetDataset(IterableDataset):
                 "input_logprobs",
                 "output_logprobs",
                 "temperature",
+                "problem_id",
             ]
 
             scanner = dataset.scanner(columns=required_columns, batch_size=self._pq_read_bs)
@@ -271,6 +279,10 @@ class ParquetDataset(IterableDataset):
                             ids = torch.cat([input_ids, output_ids], dim=0)
                             loss_mask = torch.cat([torch.zeros(len(input_ids)), torch.ones(len(output_ids))], dim=0).int()
 
+                            if loss_mask.sum() == 0:
+                                # try to make it very obvious in logs
+                                print(f"[DATA-DEBUG] all-zero loss_mask detected counter={counter}, j={j}, i={i})")
+
                             adv_value = batch["advantages"][i].as_py()
                             reward_value = batch["rewards"][i].as_py()
 
@@ -293,6 +305,7 @@ class ParquetDataset(IterableDataset):
                                 "task_type": batch["task_type"][i].as_py(),
                                 "logprobs": logprobs,
                                 "temperature": batch["temperature"][i].as_py(),
+                                "problem_id": batch["problem_id"][i].as_py(),
                             }
 
                         except Exception as e:
@@ -311,8 +324,11 @@ class ParquetDataset(IterableDataset):
                 if sample_count >= target_sample_count_per_batch:
                     break
 
+
 # Helpers for EMParquetDataset
 _PRIV_RE = re.compile(r"<privileged>(.*?)</privileged>", re.DOTALL)
+
+
 def _strip_privileged(text: str):
     """Remove <privileged> … </privileged> (tags + content)."""
     return _PRIV_RE.sub("", text)
@@ -329,8 +345,9 @@ def _add_privileged_block(base: str, priv: str):
     if not priv:
         return base
     # TODO should format correctly for all tokenizers not just Qwen
-    s = base[:-33] + '<privileged>' + priv + '</privileged>' + base[-33:]
-    return s #f"{base.rstrip()}\n<privileged>{priv}</privileged>\n"
+    s = base[:-33] + "<privileged>" + priv + "</privileged>" + base[-33:]
+    return s  # f"{base.rstrip()}\n<privileged>{priv}</privileged>\n"
+
 
 class ParquetDatasetEM(IterableDataset):
     """
@@ -348,7 +365,7 @@ class ParquetDatasetEM(IterableDataset):
         timeout: float,
         step_count_init: int,
         ignore_zero_advantages: bool,
-        tokenizer = None,
+        tokenizer=None,
         pq_read_bs: int = 64,
         use_stable_file: bool = False,
     ):
@@ -447,7 +464,7 @@ class ParquetDatasetEM(IterableDataset):
                     # Format prompts to include and remove <privileged> information
                     regular_inputs = self._prepare_inputs_regular(batch["input_tokens"])
                     privileged_inputs = self._prepare_inputs_privileged(batch["input_tokens"])
-                    
+
                     for i in range(len(batch["input_tokens"])):
                         counter += 1
                         if _should_skip_index(
@@ -460,9 +477,9 @@ class ParquetDatasetEM(IterableDataset):
                             continue
 
                         try:
-                            #input_ids = torch.tensor(batch["input_tokens"][i].as_py())
+                            # input_ids = torch.tensor(batch["input_tokens"][i].as_py())
                             # RETURN 2 input_ids: 1 for regualr and 1 for privileged. After that during training, we compute log probs with both
-                            #input_ids = torch.tensor(batch["input_tokens"][i].as_py())
+                            # input_ids = torch.tensor(batch["input_tokens"][i].as_py())
                             input_ids = torch.tensor(regular_inputs[i])
                             priv_input_ids = torch.tensor(privileged_inputs[i])
                             output_ids = torch.tensor(batch["output_tokens"][i].as_py())
@@ -524,7 +541,7 @@ def get_dataloader(
     batch_size: int,
     data_config: DataConfig,
     step_count_init: int,
-    em = False,
+    em=False,
 ) -> tuple[DataLoader[list[DatasetOutput]], GCPPrefetcher | None]:
     """Get a dataloader for the training dataset"""
 
@@ -559,7 +576,7 @@ def get_dataloader(
             step_count_init,
             data_config.ignore_zero_advantages,
             use_stable_file=use_stable_file,
-            tokenizer=tokenizer
+            tokenizer=tokenizer,
         )
 
     loader = DataLoader(
@@ -586,6 +603,7 @@ class BatchOutput(TypedDict):
     length_penalties: Float[torch.Tensor, "sample"]
     target_lengths: Int[torch.Tensor, "sample"]
     task_types: list[str]
+    problem_ids: list[str]
 
     # batch level
     temperature: float
@@ -619,6 +637,7 @@ def collate_fn(samples: list[DatasetOutput], max_seq_len: int, pad_token_id: int
     length_penalties = [sample["length_penalties"] for sample in samples]
     target_lengths = [sample["target_lengths"] for sample in samples]
     task_types = [sample["task_type"] for sample in samples]
+    problem_ids = [sample["problem_id"] for sample in samples]
 
     # Handle logprobs if available
     all_logprobs = [sample["logprobs"] for sample in samples if sample["logprobs"] is not None]
@@ -697,6 +716,7 @@ def collate_fn(samples: list[DatasetOutput], max_seq_len: int, pad_token_id: int
         "target_lengths": torch.tensor(target_lengths),
         "task_types": task_types,
         "temperature": temperature,
+        "problem_ids": problem_ids,
     }
 
 
@@ -827,12 +847,15 @@ def merge_batches_padding(batches: list[BatchOutput], em=False) -> BatchOutput:
         "length_penalties": torch.cat([b["length_penalties"] for b in batches]),
         "target_lengths": torch.cat([b["target_lengths"] for b in batches]),
         "task_types": [task_type for b in batches for task_type in b["task_types"]],
+        "problem_ids": [pid for b in batches for pid in b["problem_ids"]],
         # batch level
         "temperature": temperatures[0],
     }
 
 
-def packed_batch_padding(batch_optim: list[DatasetOutput], max_seq_len: int, pad_token_id: int, micro_bs: int, em=False) -> list[BatchOutput]:
+def packed_batch_padding(
+    batch_optim: list[DatasetOutput], max_seq_len: int, pad_token_id: int, micro_bs: int, em=False
+) -> list[BatchOutput]:
     """
     This function will pad the batch to the max_seq_len
     """

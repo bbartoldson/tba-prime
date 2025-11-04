@@ -8,7 +8,7 @@ import reasoning_gym
 from datasets import Dataset
 
 # Default output path (can be overridden via CLI).
-OUTPUT_PATH = Path("/home/mila/j/jain.vineet/scratch/tba_prime/datasets/")
+OUTPUT_PATH = Path("/p/vast1/bartolds/tba-prime/datasets/")
 
 _PROMPT_TEMPLATE = (
     "You are given a problem, solve it step-by-step. "

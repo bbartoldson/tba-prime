@@ -113,6 +113,9 @@ class TBConfig(BaseGRPOVariantConfig):
     beta: Annotated[float, Field(default=0.05, description="KL reg coefficient for p with p_ref.")]
     beta_q: Annotated[float, Field(default=0.1, description="KL reg coefficient for q with p (EM only).")]
     n: Annotated[int, Field(default=16, ge=1, description="Number of output sequences to return for the given prompt.")]
+    beta_decay_end: Annotated[int, Field(default=-1)]
+    final_beta: Annotated[float | None, Field(default=None, description="Final KL reg coefficient for p with p_ref.")]
+    importance_sample: Annotated[bool, Field(default=True, description="Importance Sampling")]
 
 
 GRPOVariantsConfig: TypeAlias = Union[ClippingConfig, KlCovConfig, RatioConfig, TBConfig]
@@ -122,10 +125,14 @@ class GRPOLossConfig(BaseConfig):
     """Configures the GRPO loss."""
 
     # The GRPO variant configuration
-    off_policy: GRPOVariantsConfig = TBConfig() #RatioConfig()
+    off_policy: GRPOVariantsConfig = TBConfig()  # RatioConfig()
 
     kl_coef: Annotated[float | None, Field(default=None)]
     entropy_loss_coeff: Annotated[float, Field(default=0)]
+
+    # ProRL-style reference resetting
+    reference_reset_interval: Annotated[int | None, Field(default=None)]
+    reference_reset_opt: Annotated[int | None, Field(default=None)]
 
 
 class ModelConfig(BaseConfig):

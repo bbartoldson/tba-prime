@@ -184,6 +184,7 @@ class MetricsAverager:
     @torch.no_grad()
     def sync(self):
         for key in self.metrics:
+            """
             value = self.metrics[key].clone()
             count = torch.tensor(self.count[key])
 
@@ -193,6 +194,16 @@ class MetricsAverager:
             value = value / count
 
             self.metrics[key] = value
+            """
+            value = self.metrics[key].clone().cuda()
+            count = torch.tensor(self.count[key]).cuda()
+
+            dist.all_reduce(value, op=dist.ReduceOp.SUM)
+            dist.all_reduce(count, op=dist.ReduceOp.SUM)
+
+            value = value / count
+
+            self.metrics[key] = value.cpu()
 
     def __getitem__(self, key):
         return self.metrics[key]

@@ -1,19 +1,24 @@
+max_steps = 351
 clean_rollout_path = true
-rollout_path = "/p/vast1/bartolds/tba-prime/rollouts"
+rollout_path = "/p/vast1/bartolds/tba-prime/GRPO_async5_qwen_rollouts"
 #max_batch_size = "auto"
 #max_batch_size = 800
 #max_batch_size = 512
-max_batch_size = 256
+#max_batch_size = 256 # for neurips
+#max_batch_size = 128 
+max_batch_size = 128 # 384
 
 [monitor.wandb]
 project = "math-debug"
-name = "GRPO_infer"
+name = "GRPO_infer_async5_qwen_3072"
 
 [model]
 #name = "Qwen/Qwen2.5-1.5B-Instruct"
 #name = "Qwen/Qwen3-8B"
-name = "Qwen/Qwen2.5-7B-Instruct"
-max_model_len = 1024
+#name = "Qwen/Qwen2.5-7B-Instruct"
+name = "Qwen/Qwen2.5-7B"
+#max_model_len = 2048
+max_model_len = 3072
 
 [data]
 name = "/p/vast1/bartolds/math-hendrycks-genesys-format/data/train_set"
@@ -22,5 +27,6 @@ name = "/p/vast1/bartolds/math-hendrycks-genesys-format/data/train_set"
 dp = 4
 
 [rl]
-ckpt_path = "/p/vast1/bartolds/tba-prime/checkpoints"
+async_level = 5 # was default, 2
+ckpt_path = "/p/vast1/bartolds/tba-prime/GRPO_async5_qwen_checkpoints"
 clean_ckpt_path = true

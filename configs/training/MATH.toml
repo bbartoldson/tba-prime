@@ -1,0 +1,29 @@
+stop_after_steps = 350
+max_async_level = 5 # was default, 2
+
+[monitor.wandb]
+project = "a"
+name = "a"
+
+[model]
+name = "meta-llama/Llama-3.1-8B-Instruct"
+
+[train]
+micro_bs = 1 
+reshard_after_forward = true
+ac_ckpt = true
+
+[optim]
+batch_size = 512
+step_per_rollout = 1 
+
+[optim.optim]
+lr = 1e-6
+
+[data]
+path = "a"
+seq_length = 4096
+
+[ckpt]
+rollout_path = "a"
+clean_rollout_path = true

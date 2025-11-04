@@ -20,8 +20,10 @@ def grpo_loss(
     temperature: float,
     max_tokens: int,
     grpo_loss_config: GRPOVariantsConfig,
-    beta_q = False,
-    ref_loss_mask = None,
+    tb_beta=None,
+    mean_KL=None,
+    beta_q=False,
+    ref_loss_mask=None,
 ) -> tuple[Tensor, Tensor | None]:
     if isinstance(grpo_loss_config, ClippingConfig):
         return grpo_loss_clip(
@@ -64,21 +66,21 @@ def grpo_loss(
             grpo_loss_config.highest_entropy_ratio_loss,
         )
     elif isinstance(grpo_loss_config, TBConfig):
-        if beta_q:
-            beta = grpo_loss_config.beta_q
-        else:
-            beta = grpo_loss_config.beta
         return grpo_loss_tb(
             logits,
             input_ids,
+            advantages,
             rewards,
             logZ_batch,
+            mean_KL,
             ref_logprobs,
             loss_mask,
             temperature,
             max_tokens,
-            beta,
+            tb_beta,
             ref_loss_mask,
+            original_logprobs,
+            grpo_loss_config.IS,
         )
     else:
         raise ValueError(f"Invalid grpo_loss_type: {grpo_loss_config.type}")
@@ -88,14 +90,18 @@ def grpo_loss(
 def grpo_loss_tb(
     logits: Float[Tensor, "batch seq vocab"],
     input_ids: Int[Tensor, "batch seq"],
+    advantages: Float[Tensor, "batch seq"],
     rewards: Float[Tensor, "batch"],
     logZ_batch,
+    mean_KL,
     ref_logprobs: Float[Tensor, "batch seq_minus_1"],
     loss_mask: Int[Tensor, "batch seq"],
     temperature: float,
     max_tokens: int,
-    beta: float, # reward temperature
-    ref_loss_mask = None,
+    beta: float,  # reward temperature
+    ref_loss_mask=None,
+    original_logprobs=None,
+    IS=None,
 ) -> tuple[Tensor, None]:
     """
     DeepSeek Math Loss: https://arxiv.org/abs/2402.03300
@@ -110,7 +116,8 @@ def grpo_loss_tb(
     """
     # we start by dropping the bos token because it does not have a corresponding logit
     input_ids = input_ids[:, 1:]
-    #rewards = rewards[:, 1:]
+    advantages = advantages[:, 1:]
+    # rewards = rewards[:, 1:]
     loss_mask = loss_mask[:, 1:]
     if ref_loss_mask is None:
         ref_loss_mask = loss_mask
@@ -127,10 +134,45 @@ def grpo_loss_tb(
     masked_per_token_logps = per_token_logps * loss_mask
     masked_ref_logprobs = ref_logprobs * ref_loss_mask
 
-    residuals = (logZ_batch + beta * (masked_per_token_logps.sum(1) - masked_ref_logprobs.sum(1)) - rewards)**2
-    loss = residuals.sum() / (2 * beta * max_tokens)
+    advantage = rewards - logZ_batch
+    num = (advantages * loss_mask).sum(1)
+    den = loss_mask.sum(1)
+    assert torch.allclose(advantage, num / den), f"{advantage}, {num, den}"
+
+    ratio = torch.clamp(torch.exp(per_token_logps - original_logprobs), 0, 8)
+    with torch.no_grad():
+        kl_est = masked_per_token_logps.detach() - masked_ref_logprobs
+        kl_est = torch.clamp(kl_est, min=-10, max=10)
+        kl_est = kl_est.sum(1)
+    advantages += -beta * (kl_est - mean_KL).unsqueeze(1)
+    if IS == True:
+        print(f"IS is {IS}!!")
+        per_token_loss = -ratio * advantages  # Importance Sampling
+    else:
+        assert IS == False, f"IS was {IS}"
+        print(f"IS is {IS}!!")
+        per_token_loss = -per_token_logps * advantages
+    assert per_token_loss.shape == per_token_logps.shape
+    loss = _apply_mask(per_token_loss, loss_mask, max_tokens)
     return loss, None
-    
+    """
+    if beta>0:
+        #kl_est = (masked_per_token_logps - masked_ref_logprobs).sum(1)
+        kl_est = (masked_per_token_logps - masked_ref_logprobs)
+        kl_est = torch.clamp(kl_est, min=-10, max=10)
+        kl_est = kl_est.sum(1)
+        residuals = (logZ_batch + beta * kl_est - rewards)**2
+        residuals = residuals.unsqueeze(1) * ratio / loss_mask.sum(1) # Importance Sampling
+        assert residuals.shape == per_token_logps.shape
+        loss = residuals.sum() / (2 * beta) # * max_tokens)
+    elif beta==0:
+        residuals = (logZ_batch - rewards) * masked_per_token_logps.sum(1)
+        loss = residuals.sum()
+    else:
+        assert False, 'beta < 0'
+    return loss, None
+    """
+
 
 @jaxtyped(typechecker=typechecker)
 def grpo_loss_clip(

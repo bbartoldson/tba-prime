@@ -3,54 +3,53 @@ import multiprocessing as mp
 import os
 import shutil
 import time
-from pathlib import Path
 import uuid
-
-from zeroband.inference import envs
+from copy import deepcopy
+from pathlib import Path
 
 import numpy as np
 import pyarrow.parquet as pq
 import requests
 import torch
-from datasets import load_dataset, load_from_disk
+from datasets import load_from_disk
+from huggingface_hub import snapshot_download
 from toploc.utils import sha256sum
 
-from huggingface_hub import snapshot_download
-
+from zeroband.inference import envs
 from zeroband.inference.config import Config as InferenceConfig
-from zeroband.utils.pydantic_config import parse_argv
-from zeroband.training.mp import EnvWrapper
-from zeroband.utils.utils import clean_exit
 from zeroband.inference.logger import setup_logger
+from zeroband.training.mp import EnvWrapper
+from zeroband.utils.pydantic_config import parse_argv
+from zeroband.utils.utils import clean_exit
+
 
 @clean_exit
 def inference(config: InferenceConfig):
     # (Jack): This is an umerged patch to fix a bug in vllm https://github.com/vllm-project/vllm/pull/19940
     # This can be removed once the patch is merged and vllm is updated.
-    import zeroband.inference.monkeypatch_sampling_metadata 
-    import zeroband.vllm_08_shim # FIX?
     from vllm import SamplingParams, TokensPrompt
+
     from zeroband.eval.utils import run_benchmark
     from zeroband.inference.parquet import get_parquet_table
     from zeroband.inference.pipeline import all_reduce, patch_model_load, setup_comm, setup_hooks
     from zeroband.inference.rewards import compute_vllm_rewards
     from zeroband.inference.toploc import setup_toploc_cache
     from zeroband.inference.toploc2 import Toploc2Sampler
-    from zeroband.utils.monitor import setup_monitor
-
     from zeroband.inference.utils import (
-        setup_model,
+        compute_max_batch_size,
         filter_data_by_prompt_length,
+        format_prompts,
+        generate_target_lengths,
+        get_inference_input_output_flops,
         reload_checkpoint,
         reload_model_weights,
-        compute_max_batch_size,
-        get_inference_input_output_flops,
-        generate_target_lengths,
-        format_prompts,
+        setup_model,
     )
+    from zeroband.utils.monitor import setup_monitor
+
     dp_rank = int(os.environ.get("DP_RANK", 0))
     device = os.environ.get("CUDA_VISIBLE_DEVICES", 0)
-    print(f'Process loaded with rank {dp_rank} with GPU: {device}')
+    print(f"Process loaded with rank {dp_rank} with GPU: {device}")
 
     # Initialize the logger
     logger = setup_logger(config.log, parallel_config=config.parallel, dp_rank=dp_rank)
@@ -87,7 +86,7 @@ def inference(config: InferenceConfig):
     # Initialize dataset
     logger.info(f"Initializing dataset (name={config.data.name}, split={config.data.split})")
     start_time = time.time()
-    dataset = load_from_disk(config.data.name)#load_dataset(config.data.name, split=config.data.split)
+    dataset = load_from_disk(config.data.name)  # load_dataset(config.data.name, split=config.data.split)
 
     if not config.rewards.compute_reward:
         logger.info("Reward computation is disabled, setting task_type to null_reward")
@@ -240,7 +239,9 @@ def inference(config: InferenceConfig):
             last_eval_step = ckpt_step
             logger.info(f"Running evals for checkpoint step {ckpt_step}")
             for benchmark in config.eval.benchmarks:
-                run_benchmark(llm, benchmark, config.model, config.sampling, ckpt_step, seed=config.seed, use_tqdm=config.use_tqdm)
+                eval_conf = deepcopy(config.sampling)
+                eval_conf.n = 1
+                run_benchmark(llm, benchmark, config.model, eval_conf, ckpt_step, seed=config.seed, use_tqdm=True)
 
         # Write the current step to a file, this is required for resuming tasks in production but can be ignored for local runs
         if config.step_path is not None:
@@ -381,7 +382,7 @@ def inference(config: InferenceConfig):
 
             # Order the request outputs by prompt_id to pretend like we generated all samples in one go
             # request_outputs = list(dict(sorted(unordered_request_outputs.items(), key=lambda x: x[0])).values())
-            from vllm.outputs import RequestOutput, CompletionOutput
+            from vllm.outputs import CompletionOutput, RequestOutput
 
             request_outputs = []
             for prompt_id in unordered_output_token_ids.keys():
@@ -538,7 +539,7 @@ def main(config: InferenceConfig) -> list[mp.Process]:
         gpu_ids = envs.CUDA_VISIBLE_DEVICES
         gpu_ids_per_rank = [gpu_ids[i : i + config.parallel.tp] for i in range(0, len(gpu_ids), config.parallel.tp)]
         for rank, gpu_ids in enumerate(gpu_ids_per_rank):
-            print(f'Process rank: {rank} with GPU: {",".join(map(str, gpu_ids))}')
+            print(f"Process rank: {rank} with GPU: {','.join(map(str, gpu_ids))}")
             env = {"CUDA_VISIBLE_DEVICES": ",".join(map(str, gpu_ids)), "DP_RANK": str(rank)}
             process = mp.Process(target=EnvWrapper(inference, env), args=(config,))
             processes.append(process)
@@ -548,7 +549,7 @@ def main(config: InferenceConfig) -> list[mp.Process]:
         inference(config)
 
     # Start all processes
-    print(f'Running {len(processes)} processes')
+    print(f"Running {len(processes)} processes")
     for process in processes:
         process.start()
 

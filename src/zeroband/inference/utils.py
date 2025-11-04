@@ -34,6 +34,24 @@ def filter_data_by_prompt_length(data: Dataset, max_length: int, tokenizer: AnyT
 
 
 def setup_model(model_config: ModelConfig, tp: int, seed: int | None):
+    if model_config.name == "meta-llama/Llama-3.1-8B":
+        llm = LLM(
+            model=model_config.name,
+            tokenizer="meta-llama/Llama-3.1-8B-Instruct",
+            dtype=model_config.dtype,
+            kv_cache_dtype=model_config.kv_cache_dtype,
+            max_model_len=model_config.max_model_len,
+            quantization=model_config.quantization,
+            enforce_eager=model_config.enforce_eager,
+            device=model_config.device,
+            tensor_parallel_size=tp,
+            disable_async_output_proc=True,  # We have an off by 1 error in toploc without this flag when cuda graph padding is enabled.
+            enable_chunked_prefill=False,  # This is required for toploc2 because chunked prefill seems to allow len(seq_groups) != len(selected_token_indices) which is unexpected
+            seed=seed,
+        )
+
+        return llm
+
     llm = LLM(
         model=model_config.name,
         dtype=model_config.dtype,
