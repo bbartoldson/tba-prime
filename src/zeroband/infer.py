@@ -29,6 +29,8 @@ def inference(config: InferenceConfig):
     # This can be removed once the patch is merged and vllm is updated.
     from vllm import SamplingParams, TokensPrompt
 
+    import zeroband.inference.monkeypatch_sampling_metadata  # noqa: F401
+    import zeroband.vllm_08_shim  # noqa: F401
     from zeroband.eval.utils import run_benchmark
     from zeroband.inference.parquet import get_parquet_table
     from zeroband.inference.pipeline import all_reduce, patch_model_load, setup_comm, setup_hooks
