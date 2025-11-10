@@ -1,13 +1,5 @@
 #!/bin/bash
 
-# Check if correct number of arguments provided
-#if [ $# -ne 3 ]; then
-#    echo "Usage: $0 <config_name> <node1_hostname> <node2_hostname>"
-#    echo "Example: $0 TBA_lr1e-5_llama matrix11 matrix12"
-#    echo "Example: $0 kill matrix11 matrix12"
-#    exit 1
-#fi
-
 # Get command line arguments
 CONFIG_PATH=$1
 
@@ -62,9 +54,7 @@ eval_interval=""
 eval_steps=25
 eval_steps=5
 conf=MATH.toml
-project=" --monitor.wandb.project TBA-math "
-project=" --monitor.wandb.project TBA-sweep "
-project=" --monitor.wandb.project TBA-refine "
+project=" --monitor.wandb.project TBA "
 
 # Define the config file path
 echo "Loading configuration from: ${CONFIG_PATH}"
@@ -72,9 +62,6 @@ echo "Loading configuration from: ${CONFIG_PATH}"
 source "${CONFIG_PATH}"
 
 # Remove "hparams/" prefix
-name="${CONFIG_PATH#hparams/}"
-name="${name#setups/}"
-name="${name#sweep/}"
 name="${name#refine/}"
 name="${name/\//_}"
 name="${name/llama_base/llama}"
@@ -118,10 +105,6 @@ if [ -n "$IS" ]; then
     objective_args+=$IS
 fi
 
-if [ -n "$KL_norm" ]; then
-    objective_args+=" --grpo.off-policy.kl-length-normalization $KL_norm"
-fi
-
 if [ -n "$beta_decay_end" ]; then
     objective_args+=" --grpo.off-policy.beta-decay-end $beta_decay_end"
 fi
@@ -130,17 +113,6 @@ if [ -n "$final_beta" ]; then
     objective_args+=" --grpo.off-policy.final-beta $final_beta"
 fi
 
-if [ -n "$kl_clamp" ]; then
-    objective_args+=" --grpo.off-policy.kl-clamp $kl_clamp"
-fi
-
-if [ -n "$kl_norm_type" ]; then
-    objective_args+=" --grpo.off-policy.kl-norm-type $kl_norm_type"
-fi
-
-if [ -n "$kl_target" ]; then
-    objective_args+=" --grpo.off-policy.kl-target $kl_target"
-fi
 
   
 # Display loaded configuration
@@ -189,7 +161,3 @@ ulimit -n 65536
 uv run torchrun --nproc_per_node=4 src/zeroband/train.py @ configs/training/${conf} $train_seq_len  --optim.batch_size $bs --model.name ${model} --data.num_workers 1  --optim.optim.lr ${LR}  --stop-after-steps $steps  --max-async-level $async_level  --data.path /p/vast1/bartolds/tba-prime/${name}_rollouts  --ckpt.rollout-path /p/vast1/bartolds/tba-prime/${name}_checkpoints ${objective_args}  --monitor.wandb.name ${name} $project > training_${name}.log 2>&1
 
 echo "Multi-node setup complete!"
-echo ""
-echo "To monitor logs:"
-echo "  Inference Node 1: tail -f /usr/workspace/bartolds/tba-prime/inference.log"
-echo "  Training Node 2: tail -f /usr/workspace/bartolds/tba-prime/training.log"
