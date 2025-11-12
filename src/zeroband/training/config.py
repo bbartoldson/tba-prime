@@ -118,7 +118,27 @@ class TBConfig(BaseGRPOVariantConfig):
     importance_sample: Annotated[bool, Field(default=True, description="Importance Sampling")]
 
 
-GRPOVariantsConfig: TypeAlias = Union[ClippingConfig, KlCovConfig, RatioConfig, TBConfig]
+class IcePopConfig(BaseGRPOVariantConfig):
+    """Configures IcePop loss."""
+
+    type: Annotated[Literal["icepop"], Field(default="icepop")]
+    ratio_type: Annotated[Literal["token", "sequence"], Field(description="Type of importance ratio to use.")] = "token"
+    ratio_length_norm: Annotated[bool, Field(description="Whether to normalize the importance ratio by the sequence length.")] = False
+
+    mask_ratio_high: Annotated[float, Field(ge=0)] = 8.0
+    mask_ratio_low: Annotated[float, Field(ge=0)] = 0.125
+    sequence_mask_ratio_low: Annotated[
+        float,
+        Field(
+            ge=0,
+            description=("If set, masks entire sequences when any generated token has an importance ratio below this value."),
+        ),
+    ] = 0.0
+    kl_tau: Annotated[float, Field(ge=0)] = 0.0
+    kl_mask_type: Annotated[Literal["masked", "unmasked", "all"], Field(description="Type of KL mask to use.")] = "all"
+
+
+GRPOVariantsConfig: TypeAlias = Union[ClippingConfig, KlCovConfig, RatioConfig, TBConfig, IcePopConfig]
 
 
 class GRPOLossConfig(BaseConfig):

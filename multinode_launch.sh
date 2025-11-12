@@ -62,6 +62,7 @@ echo "Loading configuration from: ${CONFIG_PATH}"
 source "${CONFIG_PATH}"
 
 # Remove "hparams/" prefix
+name="${CONFIG_PATH}"
 name="${name#refine/}"
 name="${name/\//_}"
 name="${name/llama_base/llama}"
@@ -87,8 +88,10 @@ if [[ "$type" == "tb" ]]; then
     objective_args="--grpo.off-policy.type $type --grpo.off-policy.beta $beta  --grpo.off-policy.n $train_k "
 elif [[ "$type" == "ratio" ]]; then
     objective_args="--grpo.off-policy.type $type"
+elif [[ "$type" == "icepop" ]]; then
+    objective_args="--grpo.off-policy.type $type"
 else
-    echo "Error: Invalid type '$type'. Expected 'tb' or 'ratio'." >&2
+    echo "Error: Invalid type '$type'. Expected 'tb', 'icepop', or 'ratio'." >&2
     exit 1
 fi
 

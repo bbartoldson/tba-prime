@@ -4,7 +4,7 @@ from beartype import beartype as typechecker
 from jaxtyping import Float, Int, jaxtyped
 from torch import Tensor
 
-from zeroband.training.config import ClippingConfig, GRPOVariantsConfig, KlCovConfig, RatioConfig, TBConfig
+from zeroband.training.config import ClippingConfig, GRPOVariantsConfig, IcePopConfig, KlCovConfig, RatioConfig, TBConfig
 
 
 @jaxtyped(typechecker=typechecker)
@@ -66,7 +66,7 @@ def grpo_loss(
             grpo_loss_config.highest_entropy_ratio_loss,
         )
     elif isinstance(grpo_loss_config, TBConfig):
-        return grpo_loss_tb(
+        return tba_loss(
             logits,
             input_ids,
             advantages,
@@ -82,12 +82,103 @@ def grpo_loss(
             original_logprobs,
             grpo_loss_config.importance_sample,
         )
+    elif isinstance(grpo_loss_config, IcePopConfig):
+        return icepop_loss(logits, input_ids, advantages, original_logprobs, loss_mask, temperature, max_tokens, grpo_loss_config)
     else:
         raise ValueError(f"Invalid grpo_loss_type: {grpo_loss_config.type}")
 
 
+# beartype here just make sure we have the correct shape
 @jaxtyped(typechecker=typechecker)
-def grpo_loss_tb(
+def icepop_loss(
+    logits: Float[Tensor, "batch seq vocab"],
+    input_ids: Int[Tensor, "batch seq"],
+    advantages: Float[Tensor, "batch seq"],
+    inference_logprobs: Float[Tensor, "batch seq_minus_1"],
+    loss_mask: Int[Tensor, "batch seq"],
+    temperature: float,
+    # max_tokens: int,
+    loss_scale: int,  # we divide by max seq len (here) and by # grad accum steps (in train.py)
+    loss_config: IcePopConfig,
+) -> tuple[Tensor, Tensor | None]:
+    """
+    Compute loss for packed sequences (batch size = 1, multiple sequences packed along sequence dimension).
+
+    Args:
+        trainer_logprobs: Log probabilities tensor for packed sequences
+        inference_logprobs: Old log probabilities tensor for packed sequences
+        advantages: Advantages tensor for packed sequences
+        loss_mask: Loss mask tensor for packed sequences
+        loss_config: Loss configuration object
+        loss_scale: Scale factor to normalize the loss
+
+    Returns:
+        Tuple of (scaled_loss, aggregated_loss_tensors)
+    """
+    # we start by dropping the bos token because it does not have a corresponding logit
+    input_ids = input_ids[:, 1:]
+    advantages = advantages[:, 1:]
+    loss_mask = loss_mask[:, 1:]
+    total_count = loss_mask.sum().item()
+
+    # from the logits we drop the last logits because it corresponds to the next token that will be sample but is not here yet
+    logits = logits[:, :-1, :]  # (B, L-1, V), exclude the last logit: it corresponds to the next token prediction
+
+    # Divide logits by sampling temperature.
+    # See https://huggingface.co/blog/the_n_implementation_details_of_rlhf_with_ppo#policy-training-implementation-details
+    logits = logits / temperature
+    trainer_logprobs = selective_log_softmax(logits, input_ids)
+
+    total_loss = 0
+    total_is_masked = []
+
+    for trainer_logprobs, inference_logprobs, advantages, loss_mask in zip(trainer_logprobs, inference_logprobs, advantages, loss_mask):
+        log_importance_ratio = trainer_logprobs - inference_logprobs
+
+        # assert loss_mask.bool().sum() == loss_mask.sum()
+
+        if loss_config.ratio_type == "sequence":
+            seq_log_importance_ratio = (log_importance_ratio[loss_mask.bool()]).sum()
+            if loss_config.ratio_length_norm:
+                seq_log_importance_ratio = seq_log_importance_ratio / torch.clamp_min(loss_mask.sum(), 1)
+            log_importance_ratio = trainer_logprobs - trainer_logprobs.detach() + seq_log_importance_ratio.detach()
+            log_importance_ratio = torch.clamp(log_importance_ratio, max=10.0)
+
+        importance_ratio = torch.exp(log_importance_ratio)
+        is_masked_low = importance_ratio < loss_config.mask_ratio_low
+        is_masked_high = importance_ratio > loss_config.mask_ratio_high
+        is_masked = is_masked_low | is_masked_high
+        seq_min_ratio = importance_ratio.masked_fill(~loss_mask.bool(), torch.inf).min()
+        seq_should_mask = seq_min_ratio < loss_config.sequence_mask_ratio_low
+        is_masked = is_masked | seq_should_mask
+        keep_mask = loss_mask.bool() & ~is_masked
+        loss = (-importance_ratio * advantages)[keep_mask].sum()
+        if loss_config.kl_mask_type == "masked":
+            kl_mask = loss_mask.bool() & is_masked
+        elif loss_config.kl_mask_type == "unmasked":
+            kl_mask = keep_mask
+        elif loss_config.kl_mask_type == "all":
+            kl_mask = loss_mask.bool()
+        else:
+            raise ValueError(f"Invalid KL mask type: {loss_config.kl_mask_type}")
+        loss = loss + loss_config.kl_tau * (log_importance_ratio[kl_mask]).sum()
+
+        # Apply sequence-level normalization if configured
+        if loss_config.ratio_type == "sequence":
+            loss = loss / torch.clamp_min(loss_mask.sum(), 1)
+
+        total_loss = total_loss + loss
+
+        total_is_masked.append(is_masked[loss_mask.bool()].float())
+
+    # Apply loss scaling
+    scaled_loss = total_loss / loss_scale
+
+    return scaled_loss, torch.tensor([x.sum() for x in total_is_masked]).sum() / total_count
+
+
+@jaxtyped(typechecker=typechecker)
+def tba_loss(
     logits: Float[Tensor, "batch seq vocab"],
     input_ids: Int[Tensor, "batch seq"],
     advantages: Float[Tensor, "batch seq"],
@@ -146,32 +237,12 @@ def grpo_loss_tb(
         kl_est = kl_est.sum(1)
     advantages += -beta * (kl_est - mean_KL).unsqueeze(1)
     if IS == True:
-        print(f"IS is {IS}!!")
         per_token_loss = -ratio * advantages  # Importance Sampling
     else:
-        assert IS == False, f"IS was {IS}"
-        print(f"IS is {IS}!!")
         per_token_loss = -per_token_logps * advantages
     assert per_token_loss.shape == per_token_logps.shape
     loss = _apply_mask(per_token_loss, loss_mask, max_tokens)
     return loss, None
-    """
-    if beta>0:
-        #kl_est = (masked_per_token_logps - masked_ref_logprobs).sum(1)
-        kl_est = (masked_per_token_logps - masked_ref_logprobs)
-        kl_est = torch.clamp(kl_est, min=-10, max=10)
-        kl_est = kl_est.sum(1)
-        residuals = (logZ_batch + beta * kl_est - rewards)**2
-        residuals = residuals.unsqueeze(1) * ratio / loss_mask.sum(1) # Importance Sampling
-        assert residuals.shape == per_token_logps.shape
-        loss = residuals.sum() / (2 * beta) # * max_tokens)
-    elif beta==0:
-        residuals = (logZ_batch - rewards) * masked_per_token_logps.sum(1)
-        loss = residuals.sum()
-    else:
-        assert False, 'beta < 0'
-    return loss, None
-    """
 
 
 @jaxtyped(typechecker=typechecker)
