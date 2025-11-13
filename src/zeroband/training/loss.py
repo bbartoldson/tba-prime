@@ -4,7 +4,7 @@ from beartype import beartype as typechecker
 from jaxtyping import Float, Int, jaxtyped
 from torch import Tensor
 
-from zeroband.training.config import ClippingConfig, GRPOVariantsConfig, IcePopConfig, KlCovConfig, RatioConfig, TBConfig
+from zeroband.training.config import ClippingConfig, GRPOVariantsConfig, KlCovConfig, RatioConfig, TBConfig
 
 
 @jaxtyped(typechecker=typechecker)
@@ -80,26 +80,29 @@ def grpo_loss(
             tb_beta,
             ref_loss_mask,
             original_logprobs,
-            grpo_loss_config.importance_sample,
+            grpo_loss_config,
         )
-    elif isinstance(grpo_loss_config, IcePopConfig):
-        return icepop_loss(logits, input_ids, advantages, original_logprobs, loss_mask, temperature, max_tokens, grpo_loss_config)
     else:
         raise ValueError(f"Invalid grpo_loss_type: {grpo_loss_config.type}")
 
 
-# beartype here just make sure we have the correct shape
 @jaxtyped(typechecker=typechecker)
-def icepop_loss(
+def tba_loss(
     logits: Float[Tensor, "batch seq vocab"],
     input_ids: Int[Tensor, "batch seq"],
     advantages: Float[Tensor, "batch seq"],
-    inference_logprobs: Float[Tensor, "batch seq_minus_1"],
+    rewards: Float[Tensor, "batch"],
+    logZ_batch,
+    mean_KL,
+    ref_logprobs: Float[Tensor, "batch seq_minus_1"],
     loss_mask: Int[Tensor, "batch seq"],
     temperature: float,
     # max_tokens: int,
     loss_scale: int,  # we divide by max seq len (here) and by # grad accum steps (in train.py)
-    loss_config: IcePopConfig,
+    beta: float,  # reward temperature
+    ref_loss_mask,
+    inference_logprobs,
+    loss_config: TBConfig,
 ) -> tuple[Tensor, Tensor | None]:
     """
     Compute loss for packed sequences (batch size = 1, multiple sequences packed along sequence dimension).
@@ -119,6 +122,11 @@ def icepop_loss(
     input_ids = input_ids[:, 1:]
     advantages = advantages[:, 1:]
     loss_mask = loss_mask[:, 1:]
+    if ref_loss_mask is None:
+        ref_loss_mask = loss_mask
+    else:
+        ref_loss_mask = ref_loss_mask[:, 1:]
+
     total_count = loss_mask.sum().item()
 
     # from the logits we drop the last logits because it corresponds to the next token that will be sample but is not here yet
@@ -129,10 +137,20 @@ def icepop_loss(
     logits = logits / temperature
     trainer_logprobs = selective_log_softmax(logits, input_ids)
 
+    masked_per_token_logps = trainer_logprobs * loss_mask
+    masked_ref_logprobs = ref_logprobs * ref_loss_mask
+    with torch.no_grad():
+        kl_est = masked_per_token_logps.detach() - masked_ref_logprobs
+        kl_est = torch.clamp(kl_est, min=-10, max=10)
+        kl_est = kl_est.sum(1)
+        KL_adv_term = (kl_est - mean_KL).unsqueeze(1)
+
     total_loss = 0
     total_is_masked = []
 
-    for trainer_logprobs, inference_logprobs, advantages, loss_mask in zip(trainer_logprobs, inference_logprobs, advantages, loss_mask):
+    for trainer_logprobs, inference_logprobs, advantages, loss_mask, KL_adv_term in zip(
+        trainer_logprobs, inference_logprobs, advantages, loss_mask, KL_adv_term
+    ):
         log_importance_ratio = trainer_logprobs - inference_logprobs
 
         # assert loss_mask.bool().sum() == loss_mask.sum()
@@ -152,6 +170,8 @@ def icepop_loss(
         seq_should_mask = seq_min_ratio < loss_config.sequence_mask_ratio_low
         is_masked = is_masked | seq_should_mask
         keep_mask = loss_mask.bool() & ~is_masked
+        advantages += -beta * KL_adv_term
+        assert advantages.shape == trainer_logprobs.shape
         loss = (-importance_ratio * advantages)[keep_mask].sum()
         if loss_config.kl_mask_type == "masked":
             kl_mask = loss_mask.bool() & is_masked
@@ -175,74 +195,6 @@ def icepop_loss(
     scaled_loss = total_loss / loss_scale
 
     return scaled_loss, torch.tensor([x.sum() for x in total_is_masked]).sum() / total_count
-
-
-@jaxtyped(typechecker=typechecker)
-def tba_loss(
-    logits: Float[Tensor, "batch seq vocab"],
-    input_ids: Int[Tensor, "batch seq"],
-    advantages: Float[Tensor, "batch seq"],
-    rewards: Float[Tensor, "batch"],
-    logZ_batch,
-    mean_KL,
-    ref_logprobs: Float[Tensor, "batch seq_minus_1"],
-    loss_mask: Int[Tensor, "batch seq"],
-    temperature: float,
-    max_tokens: int,
-    beta: float,  # reward temperature
-    ref_loss_mask=None,
-    original_logprobs=None,
-    IS=None,
-) -> tuple[Tensor, None]:
-    """
-    DeepSeek Math Loss: https://arxiv.org/abs/2402.03300
-
-    Args:
-        policy_logprobs: Log probabilities from the policy model
-        ref_logprobs: Log probabilities from the reference model
-        advantages: Advantages for each token
-        beta: KL penalty coefficient
-        epsilon: Clipping parameter for PPO
-        ignore_index: Specifies a target value that is ignored and does not contribute to the loss
-    """
-    # we start by dropping the bos token because it does not have a corresponding logit
-    input_ids = input_ids[:, 1:]
-    advantages = advantages[:, 1:]
-    # rewards = rewards[:, 1:]
-    loss_mask = loss_mask[:, 1:]
-    if ref_loss_mask is None:
-        ref_loss_mask = loss_mask
-    else:
-        ref_loss_mask = ref_loss_mask[:, 1:]
-
-    # from the logits we drop the last logits because it corresponds to the next token that will be sample but is not here yet
-    logits = logits[:, :-1, :]  # (B, L-1, V), exclude the last logit: it corresponds to the next token prediction
-
-    # Divide logits by sampling temperature.
-    # See https://huggingface.co/blog/the_n_implementation_details_of_rlhf_with_ppo#policy-training-implementation-details
-    logits = logits / temperature
-    per_token_logps = selective_log_softmax(logits, input_ids)
-    masked_per_token_logps = per_token_logps * loss_mask
-    masked_ref_logprobs = ref_logprobs * ref_loss_mask
-
-    advantage = rewards - logZ_batch
-    num = (advantages * loss_mask).sum(1)
-    den = loss_mask.sum(1)
-    assert torch.allclose(advantage, num / den), f"{advantage}, {num, den}"
-
-    ratio = torch.clamp(torch.exp(per_token_logps - original_logprobs), 0, 8)
-    with torch.no_grad():
-        kl_est = masked_per_token_logps.detach() - masked_ref_logprobs
-        kl_est = torch.clamp(kl_est, min=-10, max=10)
-        kl_est = kl_est.sum(1)
-    advantages += -beta * (kl_est - mean_KL).unsqueeze(1)
-    if IS == True:
-        per_token_loss = -ratio * advantages  # Importance Sampling
-    else:
-        per_token_loss = -per_token_logps * advantages
-    assert per_token_loss.shape == per_token_logps.shape
-    loss = _apply_mask(per_token_loss, loss_mask, max_tokens)
-    return loss, None
 
 
 @jaxtyped(typechecker=typechecker)

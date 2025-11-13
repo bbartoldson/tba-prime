@@ -107,7 +107,7 @@ class RatioConfig(BaseGRPOVariantConfig):
 
 
 class TBConfig(BaseGRPOVariantConfig):
-    """Configures TB loss."""
+    """Configures TBA-IcePop hybrid loss."""
 
     type: Annotated[Literal["tb"], Field(default="tb")]
     beta: Annotated[float, Field(default=0.05, description="KL reg coefficient for p with p_ref.")]
@@ -117,11 +117,6 @@ class TBConfig(BaseGRPOVariantConfig):
     final_beta: Annotated[float | None, Field(default=None, description="Final KL reg coefficient for p with p_ref.")]
     importance_sample: Annotated[bool, Field(default=True, description="Importance Sampling")]
 
-
-class IcePopConfig(BaseGRPOVariantConfig):
-    """Configures IcePop loss."""
-
-    type: Annotated[Literal["icepop"], Field(default="icepop")]
     ratio_type: Annotated[Literal["token", "sequence"], Field(description="Type of importance ratio to use.")] = "token"
     ratio_length_norm: Annotated[bool, Field(description="Whether to normalize the importance ratio by the sequence length.")] = False
 
@@ -138,7 +133,7 @@ class IcePopConfig(BaseGRPOVariantConfig):
     kl_mask_type: Annotated[Literal["masked", "unmasked", "all"], Field(description="Type of KL mask to use.")] = "all"
 
 
-GRPOVariantsConfig: TypeAlias = Union[ClippingConfig, KlCovConfig, RatioConfig, TBConfig, IcePopConfig]
+GRPOVariantsConfig: TypeAlias = Union[ClippingConfig, KlCovConfig, RatioConfig, TBConfig]
 
 
 class GRPOLossConfig(BaseConfig):
