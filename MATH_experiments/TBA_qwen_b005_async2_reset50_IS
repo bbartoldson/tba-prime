@@ -8,4 +8,4 @@ beta=0.005
 type=tb
 reset=50
 seq_length=4096
-project=" --monitor.wandb.project MATH "
+project=" --monitor.wandb.project MATH_TBA_IcePop "
