@@ -116,6 +116,13 @@ if [ -n "$final_beta" ]; then
     objective_args+=" --grpo.off-policy.final-beta $final_beta"
 fi
 
+if [ -n "$kl_type" ]; then
+    objective_args+=" --grpo.off-policy.kl-type $kl_type"
+fi
+
+if [ -n "$kl_loc" ]; then
+    objective_args+=" --grpo.off-policy.kl-loc $kl_loc"
+fi
 
   
 # Display loaded configuration

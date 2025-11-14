@@ -80,7 +80,7 @@ def grpo_loss(
             tb_beta,
             ref_loss_mask,
             original_logprobs,
-            grpo_loss_config.importance_sample,
+            grpo_loss_config,
         )
     elif isinstance(grpo_loss_config, IcePopConfig):
         return icepop_loss(logits, input_ids, advantages, original_logprobs, loss_mask, temperature, max_tokens, grpo_loss_config)
@@ -192,7 +192,7 @@ def tba_loss(
     beta: float,  # reward temperature
     ref_loss_mask=None,
     original_logprobs=None,
-    IS=None,
+    loss_config=None,
 ) -> tuple[Tensor, None]:
     """
     DeepSeek Math Loss: https://arxiv.org/abs/2402.03300
@@ -214,6 +214,8 @@ def tba_loss(
         ref_loss_mask = loss_mask
     else:
         ref_loss_mask = ref_loss_mask[:, 1:]
+    IS = loss_config.importance_sample
+    assert IS == True
 
     # from the logits we drop the last logits because it corresponds to the next token that will be sample but is not here yet
     logits = logits[:, :-1, :]  # (B, L-1, V), exclude the last logit: it corresponds to the next token prediction
@@ -231,18 +233,37 @@ def tba_loss(
     assert torch.allclose(advantage, num / den), f"{advantage}, {num, den}"
 
     ratio = torch.clamp(torch.exp(per_token_logps - original_logprobs), 0, 8)
-    with torch.no_grad():
-        kl_est = masked_per_token_logps.detach() - masked_ref_logprobs
-        kl_est = torch.clamp(kl_est, min=-10, max=10)
-        kl_est = kl_est.sum(1)
-    advantages += -beta * (kl_est - mean_KL).unsqueeze(1)
-    if IS == True:
-        per_token_loss = -ratio * advantages  # Importance Sampling
+
+    assert loss_config.kl_loc in ("reward", "loss")
+    if loss_config.kl_loc == "loss":
+        kl_est = get_token_kl(loss_config.kl_type, masked_per_token_logps, masked_ref_logprobs)
     else:
-        per_token_loss = -per_token_logps * advantages
+        with torch.no_grad():
+            kl_est = get_token_kl(loss_config.kl_type, masked_per_token_logps.detach(), masked_ref_logprobs)
+            kl_est = kl_est.sum(1)
+
+        advantages += -beta * (kl_est - mean_KL).unsqueeze(1)
+
+    per_token_loss = -ratio * advantages  # Importance Sampling
+    if loss_config.kl_loc == "loss":
+        per_token_loss += beta * kl_est
     assert per_token_loss.shape == per_token_logps.shape
+
     loss = _apply_mask(per_token_loss, loss_mask, max_tokens)
     return loss, None
+
+
+def get_token_kl(kl_type, masked_per_token_logps, masked_ref_logprobs):
+    if kl_type == "k1":
+        kl_est = masked_per_token_logps - masked_ref_logprobs
+        kl_est = torch.clamp(kl_est, min=-10, max=10)
+        return kl_est
+    elif kl_type == "k3":
+        log_r = masked_ref_logprobs - masked_per_token_logps
+        r = torch.exp(log_r)
+        kl3 = (r - log_r - 1).contiguous()
+        kl3 = torch.clamp(kl3, min=-10, max=10)
+        return kl3
 
 
 @jaxtyped(typechecker=typechecker)

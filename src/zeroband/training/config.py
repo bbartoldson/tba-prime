@@ -117,6 +117,9 @@ class TBConfig(BaseGRPOVariantConfig):
     final_beta: Annotated[float | None, Field(default=None, description="Final KL reg coefficient for p with p_ref.")]
     importance_sample: Annotated[bool, Field(default=True, description="Importance Sampling")]
 
+    kl_type: Annotated[Literal["k1", "k3"], Field(description="Type of KL to use.")] = None
+    kl_loc: Annotated[Literal["loss", "reward"], Field(description="Location of KL.")] = None
+
 
 class IcePopConfig(BaseGRPOVariantConfig):
     """Configures IcePop loss."""

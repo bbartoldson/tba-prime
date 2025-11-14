@@ -22,7 +22,7 @@ from zeroband.training.config import Config as TrainingConfig
 from zeroband.training.config import TBConfig
 from zeroband.training.data import BatchOutput, DatasetOutput, get_dataloader, packed_batch
 from zeroband.training.logger import setup_logger
-from zeroband.training.loss import entropy_loss, grpo_loss, kl_penalty, selective_log_softmax
+from zeroband.training.loss import entropy_loss, get_token_kl, grpo_loss, kl_penalty, selective_log_softmax
 from zeroband.training.utils import (
     MetricsAverager,
     OffloadedTensor,
@@ -315,10 +315,11 @@ def train(config: TrainingConfig):
 
                         masked_per_token_logps = batch["loss_mask"][:, 1:] * batch["logprobs"]
                         masked_ref_logprobs = batch["loss_mask"][:, 1:] * batch["ref_logprobs"]
-                        kl_est = masked_per_token_logps - masked_ref_logprobs
+                        # kl_est = masked_per_token_logps - masked_ref_logprobs
+                        kl_est = get_token_kl(config.grpo.off_policy.kl_type, masked_per_token_logps.detach(), masked_ref_logprobs)
                         kl_noClamp_abs_metric = kl_noClamp_abs_metric + kl_est.detach().abs().sum(1).sum()
-                        kl_est = torch.clamp(kl_est, min=-10, max=10)
-                        kl_abs_metric = kl_abs_metric + kl_est.detach().abs().sum(1).sum()
+                        # kl_est = torch.clamp(kl_est, min=-10, max=10)
+                        kl_abs_metric = kl_abs_metric  # + kl_est.detach().abs().sum(1).sum() # we already clamped in get_token_kl()
                         kl_est = kl_est.sum(1)
 
                         kl_metric = kl_metric + kl_est.detach().sum()
@@ -696,8 +697,8 @@ def train(config: TrainingConfig):
                 previous_ckpt_rollout.append(path)
                 t0 = time.time()
                 safetensor_path = save_ckpt_for_rollout(model, tokenizer, path, async_save=config.ckpt.async_save)
-                if training_progress.step in [200, 250, 300, 350, 400, 450, 500]:
-                    final_path = str(path).replace("tba-prime", "tba-prime/final")
+                if training_progress.step % 50 == 0 and training_progress.step > 0:
+                    final_path = str(path).replace("tba-prime", "tba-prime/comedy")
                     final_path = final_path.replace("_checkpoints", "")
                     _ = save_ckpt_for_rollout(model, tokenizer, Path(final_path), async_save=config.ckpt.async_save)
                 time_rollout_ckpt = time.time() - t0
