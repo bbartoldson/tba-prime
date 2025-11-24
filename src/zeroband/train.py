@@ -319,7 +319,7 @@ def train(config: TrainingConfig):
                         kl_est = get_token_kl(config.grpo.off_policy.kl_type, masked_per_token_logps.detach(), masked_ref_logprobs)
                         kl_noClamp_abs_metric = kl_noClamp_abs_metric + kl_est.detach().abs().sum(1).sum()
                         # kl_est = torch.clamp(kl_est, min=-10, max=10)
-                        kl_abs_metric = kl_abs_metric  # + kl_est.detach().abs().sum(1).sum() # we already clamped in get_token_kl()
+                        kl_abs_metric = kl_abs_metric + kl_est.detach().abs().sum(1).sum()
                         kl_est = kl_est.sum(1)
 
                         kl_metric = kl_metric + kl_est.detach().sum()
