@@ -161,7 +161,7 @@ def icepop_loss(
             kl_mask = loss_mask.bool()
         else:
             raise ValueError(f"Invalid KL mask type: {loss_config.kl_mask_type}")
-        loss = loss + loss_config.kl_tau * (log_importance_ratio.detach()[kl_mask] * trainer_logprobs[kl_mask]).sum()
+        loss = loss + loss_config.kl_tau * (log_importance_ratio.detach()[kl_mask] * importance_ratio[kl_mask]).sum()
 
         # Apply sequence-level normalization if configured
         if loss_config.ratio_type == "sequence":
