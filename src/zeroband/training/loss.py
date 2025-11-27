@@ -66,7 +66,7 @@ def grpo_loss(
             grpo_loss_config.highest_entropy_ratio_loss,
         )
     elif isinstance(grpo_loss_config, TBConfig):
-        return tba_loss(
+        return K2_tba_loss(
             logits,
             input_ids,
             advantages,
@@ -178,7 +178,7 @@ def icepop_loss(
 
 
 @jaxtyped(typechecker=typechecker)
-def tba_loss(
+def K2_tba_loss(
     logits: Float[Tensor, "batch seq vocab"],
     input_ids: Int[Tensor, "batch seq"],
     advantages: Float[Tensor, "batch seq"],
@@ -195,6 +195,8 @@ def tba_loss(
     IS=None,
 ) -> tuple[Tensor, None]:
     """
+    uses K2-style KL reg instead of TBA's
+
     DeepSeek Math Loss: https://arxiv.org/abs/2402.03300
 
     Args:
@@ -223,19 +225,16 @@ def tba_loss(
     logits = logits / temperature
     per_token_logps = selective_log_softmax(logits, input_ids)
     masked_per_token_logps = per_token_logps * loss_mask
-    masked_ref_logprobs = ref_logprobs * ref_loss_mask
-
-    advantage = rewards - logZ_batch
-    num = (advantages * loss_mask).sum(1)
-    den = loss_mask.sum(1)
-    assert torch.allclose(advantage, num / den), f"{advantage}, {num, den}"
+    # masked_ref_logprobs = ref_logprobs * ref_loss_mask
+    masked_original_logprobs = original_logprobs * loss_mask
 
     ratio = torch.clamp(torch.exp(per_token_logps - original_logprobs), 0, 8)
     with torch.no_grad():
-        kl_est = masked_per_token_logps.detach() - masked_ref_logprobs
+        kl_est = masked_per_token_logps.detach() - masked_original_logprobs
         kl_est = torch.clamp(kl_est, min=-10, max=10)
         kl_est = kl_est.sum(1)
-    advantages += -beta * (kl_est - mean_KL).unsqueeze(1)
+    # advantages += -beta * (kl_est - mean_KL).unsqueeze(1)
+    advantages += -beta * (kl_est).unsqueeze(1)
     if IS == True:
         per_token_loss = -ratio * advantages  # Importance Sampling
     else:
