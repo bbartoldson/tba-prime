@@ -1,9 +1,0 @@
-model="Qwen/Qwen2.5-7B"
-LR=1e-6
-sampled_k=16
-train_k=16
-async_level=10
-steps=420
-type=ratio
-seq_length=4096
-project=" --monitor.wandb.project MATH "
