@@ -118,10 +118,10 @@ fi
 
 inference_args=""
 if [ -n "$target_length" ]; then
-    inference_args=" --rewards.len-reward.reward-type exact --rewards.len-reward.target-lengths $target_length"
+    inference_args+=" --rewards.len-reward.reward-type exact --rewards.len-reward.target-lengths $target_length"
 fi
 if [ -n "$reward_coef" ]; then
-    inference_args=" --rewards.len-reward.reward-coef $reward_coef"
+    inference_args+=" --rewards.len-reward.reward-coef $reward_coef"
 fi
 
 
