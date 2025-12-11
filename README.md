@@ -2,6 +2,16 @@
 
 prime-rl is a codebase for decentralized RL training at scale.
 
+## Running Experiments
+
+Experiments are submitted using the multi-node launch script with an experiment config as an argument:
+
+```bash
+./multinode_launch.sh Countdown_experiments/TBA_qwen3_b005_async10_reset50
+```
+
+See the `Countdown_experiments/` and `MATH_experiments/` directories for example configurations.
+
 
 
 ## install
