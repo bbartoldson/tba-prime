@@ -116,6 +116,14 @@ if [ -n "$final_beta" ]; then
     objective_args+=" --grpo.off-policy.final-beta $final_beta"
 fi
 
+if [ -n "$kl_mask_type" ]; then
+    objective_args+=" --grpo.off-policy.kl_mask_type $kl_mask_type"
+fi
+
+if [ -n "$kl_tau" ]; then
+    objective_args+=" --grpo.off-policy.kl-tau $kl_tau"
+fi
+
 inference_args=""
 if [ -n "$target_length" ]; then
     inference_args+=" --rewards.len-reward.reward-type exact --rewards.len-reward.target-lengths $target_length"
