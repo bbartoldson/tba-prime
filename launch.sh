@@ -118,6 +118,10 @@ if [ -n "$final_beta" ]; then
     objective_args+=" --grpo.off-policy.final-beta $final_beta"
 fi
 
+if [ -n "$kl_mean_source" ]; then
+    objective_args+=" --grpo.off-policy.kl-mean-source $kl_mean_source"
+fi
+
 echo "Configuration loaded:"
 echo "================================"
 echo "REPO_DIR=$REPO_DIR"

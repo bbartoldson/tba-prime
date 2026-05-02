@@ -301,16 +301,23 @@ def train(config: TrainingConfig):
                         batch["logprobs"] = per_token_logps.to("cpu")
 
                         # For TBA we center the per-sample kl_est (computed against the
-                        # live training policy inside tba_loss) using a kl_est mean that
-                        # must come from the same train policy. batch["logprobs"] is the
-                        # inference-snapshot recompute used by the IS ratio, so we
-                        # populate a separate batch["train_logprobs"] from `model`.
+                        # live training policy inside tba_loss) using a kl_est mean
+                        # populated here. `kl_mean_source` selects whether that mean
+                        # uses the inference-snapshot (original asymmetric behavior)
+                        # or the live train policy (symmetric). batch["logprobs"] is
+                        # the inference-snapshot recompute used downstream as the
+                        # IS-ratio anchor, so we keep it untouched and stash the
+                        # mean's source separately as batch["train_logprobs"].
                         if isinstance(config.grpo.off_policy, TBConfig):
-                            if model_for_logprob is model:
-                                batch["train_logprobs"] = batch["logprobs"]
-                            else:
+                            need_train_forward = (
+                                config.grpo.off_policy.kl_mean_source == "train"
+                                and model_for_logprob is not model
+                            )
+                            if need_train_forward:
                                 per_token_logps_train = get_logprobs(model, input_ids, batch["position_ids"], batch["temperature"])
                                 batch["train_logprobs"] = per_token_logps_train.to("cpu")
+                            else:
+                                batch["train_logprobs"] = batch["logprobs"]
 
                     if config.grpo.kl_coef is not None or isinstance(config.grpo.off_policy, TBConfig):
                         logger.debug(f"kl grad_acc_step {grad_acc_step} / {num_grad_acc_steps}, batch: {batch['input_ids'].shape}")

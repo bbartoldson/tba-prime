@@ -116,6 +116,18 @@ class TBConfig(BaseGRPOVariantConfig):
     beta_decay_end: Annotated[int, Field(default=-1)]
     final_beta: Annotated[float | None, Field(default=None, description="Final KL reg coefficient for p with p_ref.")]
     importance_sample: Annotated[bool, Field(default=True, description="Importance Sampling")]
+    kl_mean_source: Annotated[
+        Literal["inference", "train"],
+        Field(
+            default="train",
+            description=(
+                "Source of logprobs for the kl_est mean used to center per-sample "
+                "kl_est inside tba_loss. 'inference' = original behavior "
+                "(model_for_logprob_only snapshot, asymmetric with the live train "
+                "policy used per-sample). 'train' = symmetric (live train policy)."
+            ),
+        ),
+    ]
 
 
 class IcePopConfig(BaseGRPOVariantConfig):
