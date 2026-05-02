@@ -10,4 +10,4 @@ project=" --monitor.wandb.project Countdown "
 conf=COUNTDOWN.toml
 reset=50
 seq_length=4096
-IS=" --no-grpo.off-policy.importance-sample " 
+IS_OFF=" --no-grpo.off-policy.importance-sample "

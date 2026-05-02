@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Resolve repo dir from script location so the launcher works from any clone
+# (override with REPO_DIR=/path/to/clone if needed).
+REPO_DIR="${REPO_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+
 # Get command line arguments
 CONFIG_PATH=$1
 
@@ -51,7 +55,6 @@ fi
 
 bs=512
 eval_interval=""
-eval_steps=25
 eval_steps=5
 conf=MATH.toml
 project=" --monitor.wandb.project TBA "
@@ -104,8 +107,11 @@ if [ -n "$reset_opt" ]; then
 fi
 
 
-if [ -n "$IS" ]; then
-    objective_args+=$IS
+# IS_OFF, when set in the experiment config, carries the flag to disable
+# importance sampling (e.g. "--no-grpo.off-policy.importance-sample"). Leave
+# it unset to keep IS on (the TBA default).
+if [ -n "$IS_OFF" ]; then
+    objective_args+=$IS_OFF
 fi
 
 if [ -n "$beta_decay_end" ]; then
@@ -144,7 +150,7 @@ echo "Starting inference workers..."
 
 # Node 1: Use all 4 GPUs for inference
 ssh $NODE2_HOSTNAME << EOF
-cd /usr/workspace/bartolds/tba-prime  # Update this path
+cd ${REPO_DIR}
 export CUDA_VISIBLE_DEVICES=0,1,2,3
 export VLLM_WORKER_MULTIPROC_METHOD=spawn
 ulimit -n 65536
@@ -158,7 +164,7 @@ sleep 5
 
 # Start training on Node 2 (uses all 4 GPUs)
 echo "Starting training worker..."
-cd /usr/workspace/bartolds/tba-prime  # Update this path
+cd "${REPO_DIR}"
 export CUDA_VISIBLE_DEVICES=0,1,2,3
 ulimit -n 65536
 uv run torchrun --nproc_per_node=4 src/zeroband/train.py @ configs/training/${conf} $train_seq_len  --optim.batch_size $bs --model.name ${model} --data.num_workers 1  --optim.optim.lr ${LR}  --stop-after-steps $steps  --max-async-level $async_level  --data.path /p/vast1/bartolds/tba-prime/${name}_rollouts  --ckpt.rollout-path /p/vast1/bartolds/tba-prime/${name}_checkpoints ${objective_args}  --monitor.wandb.name ${name} $project > training_${name}.log 2>&1
