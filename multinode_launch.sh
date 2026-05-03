@@ -126,6 +126,10 @@ if [ -n "$kl_mean_source" ]; then
     objective_args+=" --grpo.off-policy.kl-mean-source $kl_mean_source"
 fi
 
+if [ -n "$kl_per_sample_source" ]; then
+    objective_args+=" --grpo.off-policy.kl-per-sample-source $kl_per_sample_source"
+fi
+
 
   
 # Display loaded configuration

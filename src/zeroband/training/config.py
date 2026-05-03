@@ -128,6 +128,20 @@ class TBConfig(BaseGRPOVariantConfig):
             ),
         ),
     ]
+    kl_per_sample_source: Annotated[
+        Literal["inference", "train"],
+        Field(
+            default="train",
+            description=(
+                "Source of logprobs for the per-sample kl_est inside tba_loss. "
+                "'train' = live train-policy logprobs from the loss forward "
+                "(original behavior). 'inference' = original_logprobs (the "
+                "inference-snapshot recompute via model_for_logprob_only). "
+                "Combined with kl_mean_source, this lets us pick all-train, "
+                "all-inference, or the asymmetric mean-only-inference variant."
+            ),
+        ),
+    ]
 
 
 class IcePopConfig(BaseGRPOVariantConfig):

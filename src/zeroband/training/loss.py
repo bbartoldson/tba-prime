@@ -81,6 +81,7 @@ def grpo_loss(
             ref_loss_mask,
             original_logprobs,
             grpo_loss_config.importance_sample,
+            grpo_loss_config.kl_per_sample_source,
         )
     elif isinstance(grpo_loss_config, IcePopConfig):
         return icepop_loss(logits, input_ids, advantages, original_logprobs, loss_mask, temperature, max_tokens, grpo_loss_config)
@@ -193,6 +194,7 @@ def tba_loss(
     ref_loss_mask=None,
     original_logprobs=None,
     IS=None,
+    kl_per_sample_source: str = "train",
 ) -> tuple[Tensor, None]:
     """
     DeepSeek Math Loss: https://arxiv.org/abs/2402.03300
@@ -232,7 +234,12 @@ def tba_loss(
 
     ratio = torch.clamp(torch.exp(per_token_logps - original_logprobs), 0, 8)
     with torch.no_grad():
-        kl_est = masked_per_token_logps.detach() - masked_ref_logprobs
+        # Per-sample kl_est source: live train policy (default) or inference snapshot.
+        if kl_per_sample_source == "inference":
+            masked_kl_logps = original_logprobs * loss_mask
+        else:
+            masked_kl_logps = masked_per_token_logps.detach()
+        kl_est = masked_kl_logps - masked_ref_logprobs
         kl_est = torch.clamp(kl_est, min=-10, max=10)
         kl_est = kl_est.sum(1)
     advantages += -beta * (kl_est - mean_KL).unsqueeze(1)
