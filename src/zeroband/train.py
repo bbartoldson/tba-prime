@@ -29,6 +29,7 @@ from zeroband.training.utils import (
     PerfCounter,
     apply_ac_ckpt,
     copy_model_to_cpu,
+    get_real_tensor,
     log_prompt_response_samples,
     offload_model_to_cpu,
     reshard_module,
@@ -831,10 +832,13 @@ def ema_blend_fsdp(target_model, source_model, alpha: float):
         target_p = target_params.get(_strip(name))
         if target_p is None:
             raise KeyError(f"ema_blend_fsdp: no target param matching {name!r} (stripped={_strip(name)!r})")
-        # Do not unwrap with .data — under FSDP2 that yields a plain tensor
-        # while target_p stays a DTensor, which fails the in-place add.
-        # We are inside @torch.no_grad() so autograd is not tracking either op.
-        target_p.mul_(alpha).add_(source_param, alpha=1.0 - alpha)
+        # Unwrap FSDP2 DTensor on both sides via the project's get_real_tensor
+        # helper (same pattern offload_model_to_cpu / wake_up_model_from_cpu use).
+        # In-place updates to the local tensor are reflected in the DTensor
+        # wrapper since they share storage.
+        t_data = get_real_tensor(target_p.data)
+        s_data = get_real_tensor(source_param.data)
+        t_data.mul_(alpha).add_(s_data, alpha=1.0 - alpha)
         matched += 1
     if matched == 0:
         raise RuntimeError("ema_blend_fsdp matched zero params; check model architectures")
