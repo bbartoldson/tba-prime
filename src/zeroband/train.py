@@ -831,7 +831,10 @@ def ema_blend_fsdp(target_model, source_model, alpha: float):
         target_p = target_params.get(_strip(name))
         if target_p is None:
             raise KeyError(f"ema_blend_fsdp: no target param matching {name!r} (stripped={_strip(name)!r})")
-        target_p.mul_(alpha).add_(source_param.data, alpha=1.0 - alpha)
+        # Do not unwrap with .data — under FSDP2 that yields a plain tensor
+        # while target_p stays a DTensor, which fails the in-place add.
+        # We are inside @torch.no_grad() so autograd is not tracking either op.
+        target_p.mul_(alpha).add_(source_param, alpha=1.0 - alpha)
         matched += 1
     if matched == 0:
         raise RuntimeError("ema_blend_fsdp matched zero params; check model architectures")
