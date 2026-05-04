@@ -271,19 +271,19 @@ def tba_loss(
                 mae = (diff.abs() * m).sum() / n
                 # Signed mean (bias)
                 bias = (diff * m).sum() / n
-                # Relative error: ε in denom (typical |kl| scale) + clamp at 10x
-                eps = 0.1
-                rel_err_per_tok = (diff.abs() / (kl_per_token_actual.abs() + eps)).clamp(max=10.0)
-                rel_err = (rel_err_per_tok * m).sum() / n
-                # sMAPE: bounded in [0, 2], graceful near zero
-                smape_per_tok = 2.0 * diff.abs() / (
-                    kl_per_token_approx.abs() + kl_per_token_actual.abs() + eps
-                )
-                smape = (smape_per_tok * m).sum() / n
+                # Relative error with 1e-8 eps (no result clamp; can spike when
+                # |actual| is near zero — kept raw on purpose).
+                rel_err = (diff.abs() / (kl_per_token_actual.abs() + 1e-8) * m).sum() / n
+                # Relative error on values clamped to [-10, 10] first. Bounds the
+                # inputs but the ratio is still raw.
+                actual_c = kl_per_token_actual.clamp(min=-10.0, max=10.0)
+                approx_c = kl_per_token_approx.clamp(min=-10.0, max=10.0)
+                diff_c = approx_c - actual_c
+                rel_err_clamped = (diff_c.abs() / (actual_c.abs() + 1e-8) * m).sum() / n
                 metrics_out["kl_approx/mae"] = mae.detach()
                 metrics_out["kl_approx/bias"] = bias.detach()
                 metrics_out["kl_approx/rel_err"] = rel_err.detach()
-                metrics_out["kl_approx/smape"] = smape.detach()
+                metrics_out["kl_approx/rel_err_clamped"] = rel_err_clamped.detach()
 
             if kl_approx == "ema_first_order_use":
                 kl_per_token_for_loss = kl_per_token_approx
