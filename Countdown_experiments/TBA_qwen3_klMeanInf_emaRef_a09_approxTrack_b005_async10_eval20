@@ -1,0 +1,16 @@
+model="Qwen/Qwen3-4B-Instruct-2507"
+LR=1e-6
+sampled_k=16
+train_k=16
+async_level=10
+steps=720
+beta=0.005
+type=tb
+project=" --monitor.wandb.project ema_KL "
+conf=COUNTDOWN.toml
+seq_length=4096
+kl_mean_source=inference
+eval_steps=20
+reference_mode=ema
+ema_alpha=0.9
+kl_approx=ema_first_order_track

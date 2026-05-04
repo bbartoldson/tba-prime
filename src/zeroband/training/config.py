@@ -207,6 +207,29 @@ class GRPOLossConfig(BaseConfig):
         ),
     ]
 
+    # Diagnostic: extra no_grad forward through `model` in the precompute
+    # block, discarded. Used to test whether the FSDP/ac_ckpt side-effect
+    # of an extra train-side forward (rather than the resulting kl_est mean
+    # value) is what destabilizes klMeanTrain runs. Combine with a
+    # klMeanInf-style config to isolate the cause.
+    probe_extra_train_forward: Annotated[bool, Field(default=False)]
+
+    # First-order EMA approximation of the per-token log-ratio:
+    #   log T_n - log E_n ≈ α/(Δ(1-α)) · (log T_n - log T_{n-Δ})
+    # where Δ = max_async_level. Three modes:
+    #   "off": original behavior (kl_est uses ref_logprobs from ref forward)
+    #   "ema_first_order_track": still uses actual KL for the loss; the
+    #     approximation is computed alongside and per-token error metrics
+    #     are logged.
+    #   "ema_first_order_use": loss uses the approximation everywhere
+    #     (train.py mean computation and tba_loss per-sample); model_reference
+    #     is still woken/forwarded so we can keep tracking the approximation
+    #     error against the real EMA KL.
+    kl_approx: Annotated[
+        Literal["off", "ema_first_order_track", "ema_first_order_use"],
+        Field(default="off"),
+    ]
+
 
 class ModelConfig(BaseConfig):
     """Configures the model to be used for training."""

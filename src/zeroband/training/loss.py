@@ -24,6 +24,10 @@ def grpo_loss(
     mean_KL=None,
     beta_q=False,
     ref_loss_mask=None,
+    kl_approx: str = "off",
+    ema_alpha: float = 0.9,
+    max_async_level: int = 10,
+    metrics_out: dict | None = None,
 ) -> tuple[Tensor, Tensor | None]:
     if isinstance(grpo_loss_config, ClippingConfig):
         return grpo_loss_clip(
@@ -82,6 +86,10 @@ def grpo_loss(
             original_logprobs,
             grpo_loss_config.importance_sample,
             grpo_loss_config.kl_per_sample_source,
+            kl_approx=kl_approx,
+            ema_alpha=ema_alpha,
+            max_async_level=max_async_level,
+            metrics_out=metrics_out,
         )
     elif isinstance(grpo_loss_config, IcePopConfig):
         return icepop_loss(logits, input_ids, advantages, original_logprobs, loss_mask, temperature, max_tokens, grpo_loss_config)
@@ -195,6 +203,10 @@ def tba_loss(
     original_logprobs=None,
     IS=None,
     kl_per_sample_source: str = "train",
+    kl_approx: str = "off",
+    ema_alpha: float = 0.9,
+    max_async_level: int = 10,
+    metrics_out: dict | None = None,
 ) -> tuple[Tensor, None]:
     """
     DeepSeek Math Loss: https://arxiv.org/abs/2402.03300
@@ -234,14 +246,53 @@ def tba_loss(
 
     ratio = torch.clamp(torch.exp(per_token_logps - original_logprobs), 0, 8)
     with torch.no_grad():
-        # Per-sample kl_est source: live train policy (default) or inference snapshot.
+        # Actual per-token kl_est. Source for log T_n: live train policy (default)
+        # or inference snapshot (kl_per_sample_source).
         if kl_per_sample_source == "inference":
             masked_kl_logps = original_logprobs * loss_mask
         else:
             masked_kl_logps = masked_per_token_logps.detach()
-        kl_est = masked_kl_logps - masked_ref_logprobs
-        kl_est = torch.clamp(kl_est, min=-10, max=10)
-        kl_est = kl_est.sum(1)
+        kl_per_token_actual = masked_kl_logps - masked_ref_logprobs
+
+        if kl_approx != "off":
+            # First-order EMA approximation (main.tex eq 2.10):
+            #   log T_n - log E_n  ≈  α / (Δ (1-α)) · (log T_n - log T_{n-Δ})
+            # where log T_n = per_token_logps (live train forward), and
+            # log T_{n-Δ} = original_logprobs (inference snapshot).
+            coef = ema_alpha / (max_async_level * (1.0 - ema_alpha))
+            kl_per_token_approx = coef * (per_token_logps.detach() - original_logprobs) * loss_mask
+
+            if metrics_out is not None:
+                # Per-token telemetry, restricted to masked tokens.
+                m = loss_mask.float()
+                n = m.sum().clamp_min(1.0)
+                diff = kl_per_token_approx - kl_per_token_actual
+                # MAE
+                mae = (diff.abs() * m).sum() / n
+                # Signed mean (bias)
+                bias = (diff * m).sum() / n
+                # Relative error: ε in denom (typical |kl| scale) + clamp at 10x
+                eps = 0.1
+                rel_err_per_tok = (diff.abs() / (kl_per_token_actual.abs() + eps)).clamp(max=10.0)
+                rel_err = (rel_err_per_tok * m).sum() / n
+                # sMAPE: bounded in [0, 2], graceful near zero
+                smape_per_tok = 2.0 * diff.abs() / (
+                    kl_per_token_approx.abs() + kl_per_token_actual.abs() + eps
+                )
+                smape = (smape_per_tok * m).sum() / n
+                metrics_out["kl_approx/mae"] = mae.detach()
+                metrics_out["kl_approx/bias"] = bias.detach()
+                metrics_out["kl_approx/rel_err"] = rel_err.detach()
+                metrics_out["kl_approx/smape"] = smape.detach()
+
+            if kl_approx == "ema_first_order_use":
+                kl_per_token_for_loss = kl_per_token_approx
+            else:
+                kl_per_token_for_loss = kl_per_token_actual
+        else:
+            kl_per_token_for_loss = kl_per_token_actual
+
+        kl_est = torch.clamp(kl_per_token_for_loss, min=-10, max=10).sum(1)
     advantages += -beta * (kl_est - mean_KL).unsqueeze(1)
     if IS == True:
         per_token_loss = -ratio * advantages  # Importance Sampling

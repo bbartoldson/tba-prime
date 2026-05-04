@@ -134,6 +134,14 @@ if [ -n "$ema_alpha" ]; then
     objective_args+=" --grpo.ema-alpha $ema_alpha"
 fi
 
+if [ -n "$probe_extra_train_forward" ] && [ "$probe_extra_train_forward" = "true" ]; then
+    objective_args+=" --grpo.probe-extra-train-forward"
+fi
+
+if [ -n "$kl_approx" ]; then
+    objective_args+=" --grpo.kl-approx $kl_approx"
+fi
+
 echo "Configuration loaded:"
 echo "================================"
 echo "REPO_DIR=$REPO_DIR"

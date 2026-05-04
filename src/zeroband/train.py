@@ -330,6 +330,13 @@ def train(config: TrainingConfig):
                             else:
                                 batch["train_logprobs"] = batch["logprobs"]
 
+                            # Diagnostic probe: do an extra discarded forward through
+                            # `model` to test whether the FSDP/ac_ckpt side-effect of
+                            # an extra train-side forward (rather than the resulting
+                            # value) is what destabilizes klMeanTrain runs.
+                            if config.grpo.probe_extra_train_forward and not need_train_forward:
+                                _ = get_logprobs(model, input_ids, batch["position_ids"], batch["temperature"])
+
                     if config.grpo.kl_coef is not None or isinstance(config.grpo.off_policy, TBConfig):
                         logger.debug(f"kl grad_acc_step {grad_acc_step} / {num_grad_acc_steps}, batch: {batch['input_ids'].shape}")
                         input_ids = batch["input_ids"].to("cuda")
@@ -345,7 +352,18 @@ def train(config: TrainingConfig):
 
                         masked_per_token_logps = batch["loss_mask"][:, 1:] * batch["train_logprobs"]
                         masked_ref_logprobs = batch["loss_mask"][:, 1:] * batch["ref_logprobs"]
-                        kl_est = masked_per_token_logps - masked_ref_logprobs
+                        if config.grpo.kl_approx == "ema_first_order_use":
+                            # Approximation per main.tex eq 2.10:
+                            #   log T_n - log E_n ≈ α/(Δ(1-α)) · (log T_n - log T_{n-Δ})
+                            # where log T_n = train_logprobs (live train at start of
+                            # rollout) and log T_{n-Δ} = logprobs (inference snapshot).
+                            masked_inference_logprobs = batch["loss_mask"][:, 1:] * batch["logprobs"]
+                            coef = config.grpo.ema_alpha / (
+                                config.max_async_level * (1.0 - config.grpo.ema_alpha)
+                            )
+                            kl_est = coef * (masked_per_token_logps - masked_inference_logprobs)
+                        else:
+                            kl_est = masked_per_token_logps - masked_ref_logprobs
                         kl_noClamp_abs_metric = kl_noClamp_abs_metric + kl_est.detach().abs().sum(1).sum()
                         kl_est = torch.clamp(kl_est, min=-10, max=10)
                         kl_abs_metric = kl_abs_metric + kl_est.detach().abs().sum(1).sum()
@@ -542,7 +560,7 @@ def train(config: TrainingConfig):
                     ref_logp = batch["ref_logprobs"].to("cuda")
 
                 # Loss
-
+                kl_approx_metrics: dict = {}
                 pg_loss, clip_ratio = grpo_loss(
                     logits,
                     input_ids,
@@ -559,7 +577,13 @@ def train(config: TrainingConfig):
                     # tb_beta = tb_beta # adaptive_beta_test
                     tb_beta=effective_tb_beta,
                     mean_KL=kl_term,
+                    kl_approx=config.grpo.kl_approx,
+                    ema_alpha=config.grpo.ema_alpha,
+                    max_async_level=config.max_async_level,
+                    metrics_out=kl_approx_metrics,
                 )
+                for _name, _val in kl_approx_metrics.items():
+                    metric_averager.update(_name, _val)
 
                 with torch.no_grad() if config.grpo.entropy_loss_coeff == 0 else nullcontext():
                     entropy = entropy_loss(logits, loss_mask, batch["temperature"], max_tokens)
