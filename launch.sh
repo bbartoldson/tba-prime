@@ -126,6 +126,14 @@ if [ -n "$kl_per_sample_source" ]; then
     objective_args+=" --grpo.off-policy.kl-per-sample-source $kl_per_sample_source"
 fi
 
+if [ -n "$reference_mode" ]; then
+    objective_args+=" --grpo.reference-mode $reference_mode"
+fi
+
+if [ -n "$ema_alpha" ]; then
+    objective_args+=" --grpo.ema-alpha $ema_alpha"
+fi
+
 echo "Configuration loaded:"
 echo "================================"
 echo "REPO_DIR=$REPO_DIR"

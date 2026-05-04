@@ -235,6 +235,16 @@ def train(config: TrainingConfig):
                 wake_up_model_from_cpu(model_reference, tensor_offloaded_repository[0])
                 # del tensor_offloaded_repository[0]
 
+            # EMA-blend the reference policy with the live train policy *before*
+            # the ref forward, so the kl_est this rollout uses ref_t (fresh EMA)
+            # rather than ref_{t-1}. For TBA, model_reference stays GPU-resident
+            # so no wake-up is needed; for kl_coef we just woke it above.
+            if (
+                config.grpo.reference_mode == "ema"
+                and isinstance(config.grpo.off_policy, TBConfig)
+            ):
+                ema_blend_fsdp(model_reference, model, config.grpo.ema_alpha)
+
             if config.recompute_logprobs:
                 og_infer_step = training_progress.step // config.optim.step_per_rollout - config.max_async_level
                 infer_step = max(og_infer_step, 0)
@@ -597,9 +607,11 @@ def train(config: TrainingConfig):
 
             training_progress.step += 1
 
-            # ProRL-style reference model reset
+            # ProRL-style reference model reset (skipped in EMA mode, where the
+            # reference is updated each rollout via ema_blend_fsdp instead).
             if (
                 config.grpo.reference_reset_interval is not None
+                and config.grpo.reference_mode != "ema"
                 and
                 # (config.grpo.kl_coef is not None or ...)
                 isinstance(config.grpo.off_policy, TBConfig)
@@ -798,6 +810,19 @@ def copy_model_weights_fsdp(source_model, target_model):
 
         # Load into target model
         target_model.load_state_dict(source_state)
+
+
+@torch.no_grad()
+def ema_blend_fsdp(target_model, source_model, alpha: float):
+    """In-place EMA: target ← alpha·target + (1-alpha)·source.
+
+    Works on the local FSDP shards each rank holds; both models must share
+    the same architecture and FSDP wrapping.
+    """
+    target_params = dict(target_model.named_parameters())
+    for name, source_param in source_model.named_parameters():
+        target_p = target_params[name]
+        target_p.mul_(alpha).add_(source_param.data, alpha=1.0 - alpha)
 
 
 if __name__ == "__main__":

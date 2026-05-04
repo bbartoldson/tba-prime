@@ -180,6 +180,33 @@ class GRPOLossConfig(BaseConfig):
     reference_reset_interval: Annotated[int | None, Field(default=None)]
     reference_reset_opt: Annotated[int | None, Field(default=None)]
 
+    # EMA reference policy
+    reference_mode: Annotated[
+        Literal["reset", "ema"],
+        Field(
+            default="reset",
+            description=(
+                "How model_reference is maintained. 'reset' = original behavior "
+                "(periodic hard copy from model every reference_reset_interval "
+                "rollout steps). 'ema' = at the start of each rollout iteration, "
+                "blend ref ← ema_alpha·ref + (1-ema_alpha)·model before the ref "
+                "forward."
+            ),
+        ),
+    ]
+    ema_alpha: Annotated[
+        float,
+        Field(
+            default=0.9,
+            ge=0.0,
+            le=1.0,
+            description=(
+                "EMA decay for the reference policy when reference_mode='ema'. "
+                "Higher = slower update (less of the live model absorbed each step)."
+            ),
+        ),
+    ]
+
 
 class ModelConfig(BaseConfig):
     """Configures the model to be used for training."""
