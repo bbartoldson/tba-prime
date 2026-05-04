@@ -816,13 +816,25 @@ def copy_model_weights_fsdp(source_model, target_model):
 def ema_blend_fsdp(target_model, source_model, alpha: float):
     """In-place EMA: target ← alpha·target + (1-alpha)·source.
 
-    Works on the local FSDP shards each rank holds; both models must share
-    the same architecture and FSDP wrapping.
+    Works on the local FSDP shards each rank holds. Both models must share
+    the same architecture; activation-checkpoint wrappers (which inject a
+    `_checkpoint_wrapped_module.` segment into parameter names) are
+    handled by stripping that segment before key lookup, since `model` is
+    typically ac_ckpt-wrapped while `model_reference` is not.
     """
-    target_params = dict(target_model.named_parameters())
+    def _strip(name: str) -> str:
+        return name.replace("_checkpoint_wrapped_module.", "")
+
+    target_params = {_strip(n): p for n, p in target_model.named_parameters()}
+    matched = 0
     for name, source_param in source_model.named_parameters():
-        target_p = target_params[name]
+        target_p = target_params.get(_strip(name))
+        if target_p is None:
+            raise KeyError(f"ema_blend_fsdp: no target param matching {name!r} (stripped={_strip(name)!r})")
         target_p.mul_(alpha).add_(source_param.data, alpha=1.0 - alpha)
+        matched += 1
+    if matched == 0:
+        raise RuntimeError("ema_blend_fsdp matched zero params; check model architectures")
 
 
 if __name__ == "__main__":
