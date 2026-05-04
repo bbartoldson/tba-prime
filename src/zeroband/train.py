@@ -822,7 +822,16 @@ def ema_blend_fsdp(target_model, source_model, alpha: float):
     `_checkpoint_wrapped_module.` segment into parameter names) are
     handled by stripping that segment before key lookup, since `model` is
     typically ac_ckpt-wrapped while `model_reference` is not.
+
+    Before blending we explicitly reshard both models so that
+    get_real_tensor returns matching local-shard sizes. Without this, the
+    two models can be in different FSDP states (e.g. one all-gathered,
+    one sharded) because `model` goes through forward+backward+optim each
+    rollout while `model_reference` only does a forward.
     """
+    reshard_module(target_model)
+    reshard_module(source_model)
+
     def _strip(name: str) -> str:
         return name.replace("_checkpoint_wrapped_module.", "")
 
@@ -838,6 +847,11 @@ def ema_blend_fsdp(target_model, source_model, alpha: float):
         # wrapper since they share storage.
         t_data = get_real_tensor(target_p.data)
         s_data = get_real_tensor(source_param.data)
+        if t_data.shape != s_data.shape:
+            raise RuntimeError(
+                f"ema_blend_fsdp shape mismatch for {name!r}: "
+                f"target {tuple(t_data.shape)} vs source {tuple(s_data.shape)}"
+            )
         t_data.mul_(alpha).add_(s_data, alpha=1.0 - alpha)
         matched += 1
     if matched == 0:
