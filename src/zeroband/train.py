@@ -320,8 +320,20 @@ def train(config: TrainingConfig):
                         # IS-ratio anchor, so we keep it untouched and stash the
                         # mean's source separately as batch["train_logprobs"].
                         if isinstance(config.grpo.off_policy, TBConfig):
+                            # A live train forward is needed for the K-group mean
+                            # whenever the precompute kl_est must contain log T_n
+                            # (live training policy). Two cases:
+                            #   - kl_mean_source == "train": exact-KL centering
+                            #     uses log T_n directly.
+                            #   - kl_approx == "ema_first_order_use": approx is
+                            #     coef * (log T_n - log T_{n-Δ}); without the
+                            #     live forward, train_logprobs aliases inference
+                            #     logprobs and the diff degenerates to 0.
                             need_train_forward = (
-                                config.grpo.off_policy.kl_mean_source == "train"
+                                (
+                                    config.grpo.off_policy.kl_mean_source == "train"
+                                    or config.grpo.kl_approx == "ema_first_order_use"
+                                )
                                 and model_for_logprob is not model
                             )
                             if need_train_forward:
@@ -500,6 +512,8 @@ def train(config: TrainingConfig):
                 if isinstance(config.grpo.off_policy, TBConfig):
                     effective_tb_beta = tb_beta
                     kl_term = kl_avg_list[grad_acc_step // num_steps_per_logZ]
+                    if not config.grpo.kl_centering:
+                        kl_term = torch.tensor(0.0)
                     # logZ_batch = (logZ_list[grad_acc_step // num_steps_per_logZ] - effective_tb_beta * kl_term).to("cuda")
                     logZ_batch_reward_only = (logZ_list[grad_acc_step // num_steps_per_logZ]).to("cuda")
                 logger.debug(f"training grad_acc_step {grad_acc_step} / {num_grad_acc_steps}")

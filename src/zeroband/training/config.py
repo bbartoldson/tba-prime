@@ -224,10 +224,28 @@ class GRPOLossConfig(BaseConfig):
     #   "ema_first_order_use": loss uses the approximation everywhere
     #     (train.py mean computation and tba_loss per-sample); model_reference
     #     is still woken/forwarded so we can keep tracking the approximation
-    #     error against the real EMA KL.
+    #     error against the real EMA KL. Forces a live train forward in
+    #     precompute (regardless of kl_mean_source) so the K-group mean is
+    #     coef·(log T_n - log T_{n-Δ}) rather than zero by alias.
     kl_approx: Annotated[
         Literal["off", "ema_first_order_track", "ema_first_order_use"],
         Field(default="off"),
+    ]
+
+    # Whether the per-sample KL term in advantages is centered by the
+    # K-group mean kl_avg. When False, we pass mean_KL=0 to tba_loss so
+    # advantages += -beta * kl_est directly (no centering).
+    kl_centering: Annotated[
+        bool,
+        Field(
+            default=True,
+            description=(
+                "If True (default), advantages are adjusted by "
+                "-beta * (kl_est - mean_KL) where mean_KL is the K-group "
+                "mean of per-sample KL. If False, advantages are adjusted "
+                "by -beta * kl_est (no centering, mean_KL forced to 0)."
+            ),
+        ),
     ]
 
 

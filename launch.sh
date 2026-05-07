@@ -142,6 +142,10 @@ if [ -n "$kl_approx" ]; then
     objective_args+=" --grpo.kl-approx $kl_approx"
 fi
 
+if [ -n "$kl_centering" ] && [ "$kl_centering" = "false" ]; then
+    objective_args+=" --no-grpo.kl-centering"
+fi
+
 echo "Configuration loaded:"
 echo "================================"
 echo "REPO_DIR=$REPO_DIR"

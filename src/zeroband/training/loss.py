@@ -254,41 +254,33 @@ def tba_loss(
             masked_kl_logps = masked_per_token_logps.detach()
         kl_per_token_actual = masked_kl_logps - masked_ref_logprobs
 
-        if kl_approx != "off":
-            # First-order EMA approximation (main.tex eq 2.10):
-            #   log T_n - log E_n  ≈  α / (Δ (1-α)) · (log T_n - log T_{n-Δ})
-            # where log T_n = per_token_logps (live train forward), and
-            # log T_{n-Δ} = original_logprobs (inference snapshot).
-            coef = ema_alpha / (max_async_level * (1.0 - ema_alpha))
-            kl_per_token_approx = coef * (per_token_logps.detach() - original_logprobs) * loss_mask
+        # First-order EMA approximation (main.tex eq 2.10):
+        #   log T_n - log E_n  ≈  α / (Δ (1-α)) · (log T_n - log T_{n-Δ})
+        # where log T_n = per_token_logps (live train forward), and
+        # log T_{n-Δ} = original_logprobs (inference snapshot).
+        # Always computed so per-sample approx error is logged for every run,
+        # regardless of which formula is used in the loss.
+        coef = ema_alpha / (max_async_level * (1.0 - ema_alpha))
+        kl_per_token_approx = coef * (per_token_logps.detach() - original_logprobs) * loss_mask
 
-            if metrics_out is not None:
-                # Per-token telemetry, restricted to masked tokens.
-                m = loss_mask.float()
-                n = m.sum().clamp_min(1.0)
-                diff = kl_per_token_approx - kl_per_token_actual
-                # MAE
-                mae = (diff.abs() * m).sum() / n
-                # Signed mean (bias)
-                bias = (diff * m).sum() / n
-                # Relative error with 1e-8 eps (no result clamp; can spike when
-                # |actual| is near zero — kept raw on purpose).
-                rel_err = (diff.abs() / (kl_per_token_actual.abs() + 1e-8) * m).sum() / n
-                # Relative error on values clamped to [-10, 10] first. Bounds the
-                # inputs but the ratio is still raw.
-                actual_c = kl_per_token_actual.clamp(min=-10.0, max=10.0)
-                approx_c = kl_per_token_approx.clamp(min=-10.0, max=10.0)
-                diff_c = approx_c - actual_c
-                rel_err_clamped = (diff_c.abs() / (actual_c.abs() + 1e-8) * m).sum() / n
-                metrics_out["kl_approx/mae"] = mae.detach()
-                metrics_out["kl_approx/bias"] = bias.detach()
-                metrics_out["kl_approx/rel_err"] = rel_err.detach()
-                metrics_out["kl_approx/rel_err_clamped"] = rel_err_clamped.detach()
+        if metrics_out is not None:
+            m = loss_mask.float()
+            n = m.sum().clamp_min(1.0)
+            diff = kl_per_token_approx - kl_per_token_actual
+            mae = (diff.abs() * m).sum() / n
+            bias = (diff * m).sum() / n
+            rel_err = (diff.abs() / (kl_per_token_actual.abs() + 1e-8) * m).sum() / n
+            actual_c = kl_per_token_actual.clamp(min=-10.0, max=10.0)
+            approx_c = kl_per_token_approx.clamp(min=-10.0, max=10.0)
+            diff_c = approx_c - actual_c
+            rel_err_clamped = (diff_c.abs() / (actual_c.abs() + 1e-8) * m).sum() / n
+            metrics_out["kl_approx/mae"] = mae.detach()
+            metrics_out["kl_approx/bias"] = bias.detach()
+            metrics_out["kl_approx/rel_err"] = rel_err.detach()
+            metrics_out["kl_approx/rel_err_clamped"] = rel_err_clamped.detach()
 
-            if kl_approx == "ema_first_order_use":
-                kl_per_token_for_loss = kl_per_token_approx
-            else:
-                kl_per_token_for_loss = kl_per_token_actual
+        if kl_approx == "ema_first_order_use":
+            kl_per_token_for_loss = kl_per_token_approx
         else:
             kl_per_token_for_loss = kl_per_token_actual
 
