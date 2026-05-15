@@ -42,27 +42,43 @@ def metric_history(train_name: str, key: str):
 
 
 def fig_matrix():
-    """Eval curves for the 2x2 EMA-reference matrix."""
+    """Eval curves for the 2x2 EMA-reference matrix, replicate-shaded."""
     fig, ax = plt.subplots(figsize=(7.5, 4.5))
+    # Each cell has two replicates (iter1 = base name; iter2 = base name + "_iter2").
     cells = [
         ("Exact KL, K-centered",
          "infer_Countdown_experiments_TBA_qwen3_klMeanTrain_emaRef_a09_b005_async10_eval20",
+         "infer_Countdown_experiments_TBA_qwen3_klMeanTrain_emaRef_a09_b005_async10_eval20_iter2",
          "tab:red", "-"),
         ("Exact KL, no centering",
          "infer_Countdown_experiments_TBA_qwen3_noCenter_emaRef_a09_b005_async10_eval20",
+         "infer_Countdown_experiments_TBA_qwen3_noCenter_emaRef_a09_b005_async10_eval20_iter2",
          "tab:red", "--"),
         ("Approx KL, K-centered",
          "infer_Countdown_experiments_TBA_qwen3_klMeanTrain_emaRef_a09_approxUse_b005_async10_eval20",
+         "infer_Countdown_experiments_TBA_qwen3_klMeanTrain_emaRef_a09_approxUse_b005_async10_eval20_iter2",
          "tab:blue", "-"),
         ("Approx KL, no centering",
          "infer_Countdown_experiments_TBA_qwen3_noCenterByAlias_emaRef_a09_approxUse_b005_async10_eval20",
+         "infer_Countdown_experiments_TBA_qwen3_noCenter_emaRef_a09_approxUse_b005_async10_eval20_iter2",
          "tab:blue", "--"),
     ]
-    for label, run_name, color, ls in cells:
-        x, y = eval_history(run_name)
-        if not x:
+    for label, n1, n2, color, ls in cells:
+        x1, y1 = eval_history(n1)
+        x2, y2 = eval_history(n2)
+        d1 = dict(zip(x1, y1))
+        d2 = dict(zip(x2, y2))
+        steps = sorted(set(x1) | set(x2))
+        if not steps:
             continue
-        ax.plot(x, y, label=label, color=color, linestyle=ls, linewidth=1.7)
+        means, lo, hi = [], [], []
+        for s in steps:
+            vals = [v for v in (d1.get(s), d2.get(s)) if v is not None]
+            means.append(sum(vals) / len(vals))
+            lo.append(min(vals))
+            hi.append(max(vals))
+        ax.plot(steps, means, label=label, color=color, linestyle=ls, linewidth=1.7)
+        ax.fill_between(steps, lo, hi, color=color, alpha=0.15, linewidth=0)
     ax.set_xlabel("training step")
     ax.set_ylabel("Countdown eval accuracy (pass@1)")
     ax.set_title("EMA reference: $2\\times 2$ matrix of \\{exact, approx\\} KL $\\times$ \\{K-centered, no centering\\}")

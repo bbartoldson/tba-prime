@@ -91,26 +91,33 @@ The headline observations:
 
 \section{Reset reference (baseline)}
 
-Before the EMA work, the same kinds of variants were tested with a reset reference policy (hard copy from the training policy every $50$ rollout steps). Reset-ref runs use the \emph{exact} KL only (the approximation requires an EMA), and explore three choices for where to obtain $\log\Tn$ in the per-sample term and in the K-group mean. Naming below: ``inf-mean'' / ``train-mean'' indicates which source is used for $\log\Tn$ in the K-group mean.
+Before the EMA work, the same form of objective was tested with a periodic-reset reference policy~$R$ (hard copy from the training policy every $50$ rollout steps). The advantage update (\ref{eq:adv-update}) is unchanged, but per-token KL is computed against $R$ instead of $\En$, and the source for $\log T(\cdot)$ becomes configurable. Let $\Tn$ denote the live training-policy forward at the current step and $\Tinf$ the inference snapshot used during rollout generation. The per-sample per-token KL is
+\begin{equation}\label{eq:reset-persample}
+    \log T_{\text{src}_1}(y) - \log R(y),
+\end{equation}
+and the K-group mean term substitutes a (potentially different) source $T_{\text{src}_2}$:
+\begin{equation}\label{eq:reset-kmean}
+    \bar{K} \;=\; \frac{1}{K}\sum_{i=1}^K \sum_t \Bigl(\log T_{\text{src}_2}(y^{(i)}_t) - \log R(y^{(i)}_t)\Bigr),
+\end{equation}
+where each $\text{src}_j \in \{\Tn, \Tinf\}$. We test three combinations, each with importance sampling on or off, all with K-centering:
 
 \begin{center}
-\begin{tabular}{lll}
+\begin{tabular}{lcc}
 \toprule
-Run & Per-sample KL ($\log\Tn$ from) & K-group mean ($\log\Tn$ from) \\
+Variant (short) & Per-sample $\log T_{\text{src}_1}$ & K-group mean $\log T_{\text{src}_2}$ \\
 \midrule
-Exact KL, K-centered (inf-mean)   & live train forward & inference snapshot \\
-Exact KL, K-centered (train-mean) & live train forward & live train forward \\
-Inf-snapshot KL, K-centered (inf-mean) & inference snapshot & inference snapshot \\
+$T/I$ & $\log\Tn$ (live train forward) & $\log\Tinf$ (inference snapshot) \\
+$T/T$ & $\log\Tn$ & $\log\Tn$ \\
+$I/I$ & $\log\Tinf$ & $\log\Tinf$ \\
 \bottomrule
 \end{tabular}
 \end{center}
-
-Each of the three is run with and without importance sampling, for six total curves in Figure~\ref{fig:reset}.
+The first slot is the per-sample $\log T$; the second is the K-mean $\log T$. Historically these mapped to ``klMeanInference'', ``klMeanTrain'', and ``klAllInf'' respectively.
 
 \begin{figure}[ht]
   \centering
   \includegraphics[width=0.95\linewidth]{fig_reset.pdf}
-  \caption{Eval accuracy on Countdown with periodic-reset reference. Both \emph{Exact KL, K-centered (train-mean)} variants (red) collapse late in training; the \emph{Inf-snapshot} variant (green) without IS gets stuck at zero; only the \emph{Exact KL, K-centered (inf-mean)} variants (blue) trained stably.}
+  \caption{Eval accuracy on Countdown with periodic-reset reference. $T/T$ (red) collapses late in training under both IS settings; $I/I$ (green) without IS gets stuck at zero; only $T/I$ (blue) trains stably to high accuracy.}
   \label{fig:reset}
 \end{figure}
 
@@ -119,17 +126,17 @@ Each of the three is run with and without importance sampling, for six total cur
 \toprule
 Run & Peak eval (step) & Final eval \\
 \midrule
-Exact KL, K-centered (inf-mean)        & $0.836$ (700) & $0.836$ \\
-Exact KL, K-centered (train-mean)      & $0.798$ (480) & $0.122$ \\
-Inf-snapshot KL, K-centered (inf-mean) & $0.752$ (220) & $0.070$ \\
-Exact KL, K-centered (inf-mean) no IS  & $0.744$ (680) & $0.664$ \\
-Exact KL, K-centered (train-mean) no IS & $0.708$ (40) & $0.557$ \\
-Inf-snapshot KL, K-centered (inf-mean) no IS & $0.613$ (20) & $0.000$ \\
+$T/I$            & $0.836$ (700) & $0.836$ \\
+$T/T$            & $0.798$ (480) & $0.122$ \\
+$I/I$            & $0.752$ (220) & $0.070$ \\
+$T/I$, no IS    & $0.744$ (680) & $0.664$ \\
+$T/T$, no IS    & $0.708$ (40)  & $0.557$ \\
+$I/I$, no IS    & $0.613$ (20)  & $0.000$ \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-The train-mean centering instability under reset reference mirrors the K-centered instability in the EMA matrix.
+The $T/T$ collapse under reset reference mirrors the K-centered instability in the EMA matrix: in both cases, the per-sample and K-mean KL terms are computed from the \emph{same} drifting source $\Tn$, so the centering subtraction tracks the drift rather than canceling it.
 
 \section{Approximation accuracy}
 
