@@ -274,10 +274,18 @@ def tba_loss(
             approx_c = kl_per_token_approx.clamp(min=-10.0, max=10.0)
             diff_c = approx_c - actual_c
             rel_err_clamped = (diff_c.abs() / (actual_c.abs() + 1e-8) * m).sum() / n
+            # Mean-of-tokens relative error: less noisy than per-token rel_err
+            # because averaging across many tokens drowns out tokens where the
+            # actual KL is near zero. Note bias = mean(approx) - mean(actual),
+            # so rel_err_of_means = |bias| / |mean(actual)|.
+            actual_mean = (kl_per_token_actual * m).sum() / n
+            rel_err_of_means = bias.abs() / (actual_mean.abs() + 1e-8)
             metrics_out["kl_approx/mae"] = mae.detach()
             metrics_out["kl_approx/bias"] = bias.detach()
             metrics_out["kl_approx/rel_err"] = rel_err.detach()
             metrics_out["kl_approx/rel_err_clamped"] = rel_err_clamped.detach()
+            metrics_out["kl_approx/actual_mean"] = actual_mean.detach()
+            metrics_out["kl_approx/rel_err_of_means"] = rel_err_of_means.detach()
 
         if kl_approx == "ema_first_order_use":
             kl_per_token_for_loss = kl_per_token_approx
