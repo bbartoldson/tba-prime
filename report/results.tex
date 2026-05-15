@@ -117,9 +117,16 @@ The first slot is the per-sample $\log T$; the second is the K-mean $\log T$. Hi
 
 \begin{figure}[ht]
   \centering
-  \includegraphics[width=0.95\linewidth]{fig_reset.pdf}
-  \caption{Eval accuracy on Countdown with periodic-reset reference. $T/T$ (red) collapses late in training under both IS settings; $I/I$ (green) without IS gets stuck at zero; only $T/I$ (blue) trains stably to high accuracy.}
-  \label{fig:reset}
+  \includegraphics[width=0.95\linewidth]{fig_reset_is.pdf}
+  \caption{Eval accuracy on Countdown with periodic-reset reference and importance sampling on. $T/T$ (red) collapses late in training; $I/I$ (green) is unstable; only $T/I$ (blue) trains stably to high accuracy.}
+  \label{fig:reset-is}
+\end{figure}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.95\linewidth]{fig_reset_nois.pdf}
+  \caption{Eval accuracy on Countdown with periodic-reset reference and importance sampling off. The same ordering holds — $T/I$ best, $T/T$ collapses, $I/I$ gets stuck near zero — and all three are weaker than their IS-on counterparts.}
+  \label{fig:reset-nois}
 \end{figure}
 
 \begin{center}

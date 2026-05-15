@@ -91,44 +91,42 @@ def fig_matrix():
     print("wrote", out)
 
 
-def fig_reset():
-    """Eval curves for the reset-reference baseline."""
+def _plot_reset(series, title, out_name):
     fig, ax = plt.subplots(figsize=(7.5, 4.5))
-    series = [
-        ("$T/I$ (IS on)",
-         "infer_Countdown_experiments_TBA_qwen3_klMeanInference_b005_async10_eval20",
-         "tab:blue", "-"),
-        ("$T/T$ (IS on)",
-         "infer_Countdown_experiments_TBA_qwen3_klMeanTrain_b005_async10_eval20",
-         "tab:red", "-"),
-        ("$I/I$ (IS on)",
-         "infer_Countdown_experiments_TBA_qwen3_klAllInf_b005_async10_eval20",
-         "tab:green", "-"),
-        ("$T/I$ (IS off)",
-         "infer_Countdown_experiments_TBA_qwen3_klMeanInference_b005_async10_eval20_noIS",
-         "tab:blue", "--"),
-        ("$T/T$ (IS off)",
-         "infer_Countdown_experiments_TBA_qwen3_klMeanTrain_b005_async10_eval20_noIS",
-         "tab:red", "--"),
-        ("$I/I$ (IS off)",
-         "infer_Countdown_experiments_TBA_qwen3_klAllInf_b005_async10_eval20_noIS",
-         "tab:green", "--"),
-    ]
-    for label, run_name, color, ls in series:
+    for label, run_name, color in series:
         x, y = eval_history(run_name)
         if not x:
             continue
-        ax.plot(x, y, label=label, color=color, linestyle=ls, linewidth=1.4)
+        ax.plot(x, y, label=label, color=color, linewidth=1.6)
     ax.set_xlabel("training step")
     ax.set_ylabel("Countdown eval accuracy (pass@1)")
-    ax.set_title("Periodic-reset reference (every 50 steps): KL-source $\\times$ IS")
+    ax.set_title(title)
     ax.grid(True, alpha=0.3)
-    ax.legend(loc="lower right", fontsize=8)
+    ax.legend(loc="lower right", fontsize=9)
+    ax.set_ylim(-0.02, 0.9)
     fig.tight_layout()
-    out = OUT / "fig_reset.pdf"
+    out = OUT / out_name
     fig.savefig(out)
     plt.close(fig)
     print("wrote", out)
+
+
+def fig_reset_is():
+    series = [
+        ("$T/I$", "infer_Countdown_experiments_TBA_qwen3_klMeanInference_b005_async10_eval20", "tab:blue"),
+        ("$T/T$", "infer_Countdown_experiments_TBA_qwen3_klMeanTrain_b005_async10_eval20",     "tab:red"),
+        ("$I/I$", "infer_Countdown_experiments_TBA_qwen3_klAllInf_b005_async10_eval20",        "tab:green"),
+    ]
+    _plot_reset(series, "Periodic-reset reference, IS on", "fig_reset_is.pdf")
+
+
+def fig_reset_nois():
+    series = [
+        ("$T/I$", "infer_Countdown_experiments_TBA_qwen3_klMeanInference_b005_async10_eval20_noIS", "tab:blue"),
+        ("$T/T$", "infer_Countdown_experiments_TBA_qwen3_klMeanTrain_b005_async10_eval20_noIS",     "tab:red"),
+        ("$I/I$", "infer_Countdown_experiments_TBA_qwen3_klAllInf_b005_async10_eval20_noIS",        "tab:green"),
+    ]
+    _plot_reset(series, "Periodic-reset reference, IS off", "fig_reset_nois.pdf")
 
 
 def fig_approx_error():
@@ -165,5 +163,6 @@ def fig_approx_error():
 
 if __name__ == "__main__":
     fig_matrix()
-    fig_reset()
+    fig_reset_is()
+    fig_reset_nois()
     fig_approx_error()
