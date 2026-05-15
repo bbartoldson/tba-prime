@@ -95,22 +95,22 @@ def fig_reset():
     """Eval curves for the reset-reference baseline."""
     fig, ax = plt.subplots(figsize=(7.5, 4.5))
     series = [
-        ("Exact KL, K-centered (inf-mean)",
+        ("$T/I$ (IS on)",
          "infer_Countdown_experiments_TBA_qwen3_klMeanInference_b005_async10_eval20",
          "tab:blue", "-"),
-        ("Exact KL, K-centered (train-mean)",
+        ("$T/T$ (IS on)",
          "infer_Countdown_experiments_TBA_qwen3_klMeanTrain_b005_async10_eval20",
          "tab:red", "-"),
-        ("Inf-snapshot KL, K-centered (inf-mean)",
+        ("$I/I$ (IS on)",
          "infer_Countdown_experiments_TBA_qwen3_klAllInf_b005_async10_eval20",
          "tab:green", "-"),
-        ("Exact KL, K-centered (inf-mean), no IS",
+        ("$T/I$ (IS off)",
          "infer_Countdown_experiments_TBA_qwen3_klMeanInference_b005_async10_eval20_noIS",
          "tab:blue", "--"),
-        ("Exact KL, K-centered (train-mean), no IS",
+        ("$T/T$ (IS off)",
          "infer_Countdown_experiments_TBA_qwen3_klMeanTrain_b005_async10_eval20_noIS",
          "tab:red", "--"),
-        ("Inf-snapshot KL, K-centered (inf-mean), no IS",
+        ("$I/I$ (IS off)",
          "infer_Countdown_experiments_TBA_qwen3_klAllInf_b005_async10_eval20_noIS",
          "tab:green", "--"),
     ]
@@ -134,10 +134,10 @@ def fig_reset():
 def fig_approx_error():
     """MAE and bias of the first-order surrogate, two runs per panel."""
     runs = [
-        ("Exact KL, no centering (loss uses exact)",
+        ("Training loss = exact KL",
          "Countdown_experiments_TBA_qwen3_noCenter_emaRef_a09_b005_async10_eval20",
          "tab:red", "-"),
-        ("Approx KL, no centering (loss uses approx)",
+        ("Training loss = approx KL",
          "Countdown_experiments_TBA_qwen3_noCenterByAlias_emaRef_a09_approxUse_b005_async10_eval20",
          "tab:blue", "-"),
     ]

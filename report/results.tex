@@ -35,14 +35,14 @@ Two choices for the per-token KL contribution to the advantage:
 \end{itemize}
 
 \paragraph{Centering.}
-For each rollout, the per-token KL is summed over masked tokens to give a per-rollout KL term $K^{(i)}$. The advantage is then adjusted by
+For each rollout~$i$, the per-token KL is summed over masked tokens to give a per-rollout KL term $K^{(i)} = \sum_t \mathrm{kl\_per\_token}(y^{(i)}_t)$. The advantage is then adjusted by
 \begin{equation}\label{eq:adv-update}
     \text{advantage}^{(i)} \;\mathrel{+}{=}\; -\beta \cdot \bigl(K^{(i)} - \bar{K}\bigr),
 \end{equation}
 where $\bar{K}$ is a centering term. Two choices:
 \begin{itemize}
-    \item \emph{K-centered:} $\bar{K}$ is the mean of $\{K^{(j)}\}_{j=1}^K$ over the $K$ rollouts that share a problem.
-    \item \emph{No centering:} $\bar{K} \equiv 0$, so $\text{advantage}^{(i)} \mathrel{+}{=} -\beta K^{(i)}$ directly.
+    \item \emph{K-centered:} $\bar{K} = \frac{1}{K}\sum_{j=1}^K K^{(j)}$, the within-group mean of $\{K^{(j)}\}_{j=1}^K$ over the $K$ rollouts sharing a problem.
+    \item \emph{No centering:} $\bar{K} \equiv 0$, so $\text{advantage}^{(i)} \mathrel{+}{=} -\beta\,K^{(i)}$ directly.
 \end{itemize}
 
 \section{$2\times 2$ matrix: EMA reference}
@@ -52,15 +52,16 @@ Crossing the two per-token KL choices with the two centering choices yields four
 \begin{center}
 \begin{tabular}{lll}
 \toprule
-Cell & Per-sample KL formula & Centering \\
+Cell & $\mathrm{kl\_per\_token}(y)$ & Centering term $\bar{K}$ \\
 \midrule
-Exact, K-centered      & $\klexact$ & $\bar{K}$ from same formula \\
-Exact, no centering    & $\klexact$ & $\bar{K} = 0$ \\
-Approx, K-centered     & $\klapprox$ & $\bar{K}$ from same formula \\
-Approx, no centering   & $\klapprox$ & $\bar{K} = 0$ \\
+Exact, K-centered      & $\klexact$ & $\tfrac{1}{K}\sum_{j=1}^K K^{(j)}$ \\
+Exact, no centering    & $\klexact$ & $0$ \\
+Approx, K-centered     & $\klapprox$ & $\tfrac{1}{K}\sum_{j=1}^K K^{(j)}$ \\
+Approx, no centering   & $\klapprox$ & $0$ \\
 \bottomrule
 \end{tabular}
 \end{center}
+(In the K-centered rows, $K^{(j)}$ is built from the same row's $\mathrm{kl\_per\_token}$.)
 
 \begin{figure}[ht]
   \centering
@@ -145,7 +146,7 @@ We track the per-token error of the first-order surrogate against the exact EMA 
 \begin{figure}[ht]
   \centering
   \includegraphics[width=0.98\linewidth]{fig_approx_error.pdf}
-  \caption{Per-token MAE (left) and signed bias (right) of the first-order surrogate $\klapprox$ against the exact $\klexact$, computed over masked tokens within each rollout. Both no-centering cells: red uses the exact KL in the loss; blue uses the approx KL in the loss.}
+  \caption{Per-token MAE (left) and signed bias (right) of the first-order surrogate $\klapprox$ against the exact $\klexact$, averaged over masked tokens within each rollout. Both runs are no-centering EMA-reference cells; they differ only in which formula enters the loss (red: exact KL; blue: approx KL).}
   \label{fig:approx-error}
 \end{figure}
 
