@@ -280,12 +280,34 @@ def tba_loss(
             # so rel_err_of_means = |bias| / |mean(actual)|.
             actual_mean = (kl_per_token_actual * m).sum() / n
             rel_err_of_means = bias.abs() / (actual_mean.abs() + 1e-8)
+            # Per-sequence variants of the rel_err_of_means metric and of the
+            # rel-MAE (per-sequence MAE divided by per-sequence avg actual-KL),
+            # then averaged over sequences in the batch.
+            m_per_seq = m.sum(1).clamp_min(1.0)
+            actual_seq = (kl_per_token_actual * m).sum(1) / m_per_seq
+            approx_seq = (kl_per_token_approx * m).sum(1) / m_per_seq
+            mae_seq = ((kl_per_token_approx - kl_per_token_actual).abs() * m).sum(1) / m_per_seq
+            seq_rel_err_of_means = ((approx_seq - actual_seq).abs() / (actual_seq.abs() + 1e-8)).mean()
+            seq_rel_err_mae = (mae_seq / (actual_seq.abs() + 1e-8)).mean()
+            # Comparison to the alpha=0.9 reference formula: c_0.9 * diff,
+            # where diff = log T_n - log T_{n-Delta}. Shows how the per-token
+            # contribution differs from what the alpha=0.9 surrogate would give
+            # at this Delta. The diff itself doesn't depend on alpha.
+            coef_ref = 0.9 / (max_async_level * (1.0 - 0.9))
+            approx_ref = coef_ref * (per_token_logps.detach() - original_logprobs) * loss_mask
+            delta_ref = kl_per_token_approx - approx_ref
+            mae_vs_alpha09 = (delta_ref.abs() * m).sum() / n
+            bias_vs_alpha09 = (delta_ref * m).sum() / n
             metrics_out["kl_approx/mae"] = mae.detach()
             metrics_out["kl_approx/bias"] = bias.detach()
             metrics_out["kl_approx/rel_err"] = rel_err.detach()
             metrics_out["kl_approx/rel_err_clamped"] = rel_err_clamped.detach()
             metrics_out["kl_approx/actual_mean"] = actual_mean.detach()
             metrics_out["kl_approx/rel_err_of_means"] = rel_err_of_means.detach()
+            metrics_out["kl_approx/seq_rel_err_of_means"] = seq_rel_err_of_means.detach()
+            metrics_out["kl_approx/seq_rel_err_mae"] = seq_rel_err_mae.detach()
+            metrics_out["kl_approx/mae_vs_alpha09"] = mae_vs_alpha09.detach()
+            metrics_out["kl_approx/bias_vs_alpha09"] = bias_vs_alpha09.detach()
 
         if kl_approx == "ema_first_order_use":
             kl_per_token_for_loss = kl_per_token_approx
