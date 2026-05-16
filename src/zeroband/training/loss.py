@@ -289,19 +289,17 @@ def tba_loss(
             mae_seq = ((kl_per_token_approx - kl_per_token_actual).abs() * m).sum(1) / m_per_seq
             seq_rel_err_of_means = ((approx_seq - actual_seq).abs() / (actual_seq.abs() + 1e-8)).mean()
             seq_rel_err_mae = (mae_seq / (actual_seq.abs() + 1e-8)).mean()
-            # Comparison to the alpha=0.9 baseline regularization at the
-            # per-token *applied* level: beta * KL on each side. The run uses
-            # the exact KL in the loss, so the run side is beta * KL_exact.
-            # The alpha=0.9 baseline applies beta_ref * c_0.9 * diff (its
-            # surrogate); we use this as a proxy since the alpha=0.9 EMA
-            # reference isn't materialized in this run. With beta scaled so
-            # beta * c_alpha = beta_ref * c_0.9, a perfectly accurate surrogate
-            # makes the two sides equal.
-            beta_ref = 0.005
+            # Comparison to the alpha=0.9 reference: rescale the run's exact
+            # KL by c_0.9/c_alpha so that, if the surrogate is accurate at
+            # this alpha, the rescaled KL equals c_0.9 * diff (the alpha=0.9
+            # surrogate). No beta on either side; the comparison is in
+            # log-prob units. Equivalent to (c_0.9/c_alpha) * (surrogate
+            # error at this alpha).
             coef_ref = 0.9 / (max_async_level * (1.0 - 0.9))
-            approx_ref = beta_ref * coef_ref * (per_token_logps.detach() - original_logprobs) * loss_mask
-            run_per_token = beta * kl_per_token_actual
-            delta_ref = run_per_token - approx_ref
+            rescale = coef_ref / coef  # c_0.9 / c_alpha
+            rescaled_actual = rescale * kl_per_token_actual
+            approx_ref = coef_ref * (per_token_logps.detach() - original_logprobs) * loss_mask
+            delta_ref = rescaled_actual - approx_ref
             mae_vs_alpha09 = (delta_ref.abs() * m).sum() / n
             bias_vs_alpha09 = (delta_ref * m).sum() / n
             metrics_out["kl_approx/mae"] = mae.detach()
