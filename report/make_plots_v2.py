@@ -161,8 +161,120 @@ def fig_approx_error():
     print("wrote", out)
 
 
+def _plot_with_replicates(ax, series, color, ls, label):
+    """series: list of run names (replicates). Plots mean line and min/max ribbon."""
+    histories = []
+    for name in series:
+        x, y = eval_history(name)
+        if x:
+            histories.append(dict(zip(x, y)))
+    if not histories:
+        return
+    steps = sorted(set().union(*[set(h.keys()) for h in histories]))
+    means, lo, hi = [], [], []
+    for s in steps:
+        vals = [h[s] for h in histories if s in h]
+        means.append(sum(vals)/len(vals))
+        lo.append(min(vals))
+        hi.append(max(vals))
+    ax.plot(steps, means, color=color, linestyle=ls, linewidth=1.7, label=label)
+    if any(h != l for h, l in zip(hi, lo)):
+        ax.fill_between(steps, lo, hi, color=color, alpha=0.15, linewidth=0)
+
+
+def fig_ablation_beta():
+    """β ablation on the K-centered EMA cell (A)."""
+    fig, ax = plt.subplots(figsize=(7.5, 4.5))
+    families = [
+        ("$\\beta = 0.005$ (baseline)", [
+            "infer_Countdown_experiments_TBA_qwen3_klMeanTrain_emaRef_a09_b005_async10_eval20",
+            "infer_Countdown_experiments_TBA_qwen3_klMeanTrain_emaRef_a09_b005_async10_eval20_iter2",
+        ], "tab:blue", "-"),
+        ("$\\beta = 0.01$", [
+            "infer_Countdown_experiments_TBA_qwen3_klMeanTrain_emaRef_a09_b01_async10_eval20",
+        ], "tab:purple", "-"),
+        ("$\\beta = 0.05$", [
+            "infer_Countdown_experiments_TBA_qwen3_klMeanTrain_emaRef_a09_b05_async10_eval20",
+        ], "tab:red", "-"),
+    ]
+    for label, runs, color, ls in families:
+        _plot_with_replicates(ax, runs, color, ls, label)
+    ax.set_xlabel("training step")
+    ax.set_ylabel("Countdown eval accuracy (pass@1)")
+    ax.set_title("$\\beta$ ablation: EMA exact + K-centered (klMeanTrain)")
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="lower right", fontsize=9)
+    ax.set_ylim(0, 0.9)
+    fig.tight_layout()
+    out = OUT / "fig_ablation_beta.pdf"
+    fig.savefig(out); plt.close(fig); print("wrote", out)
+
+
+def fig_ablation_is():
+    """IS ablation on no-centering EMA cells (B and D)."""
+    fig, ax = plt.subplots(figsize=(7.5, 4.5))
+    families = [
+        ("Exact, IS on", [
+            "infer_Countdown_experiments_TBA_qwen3_noCenter_emaRef_a09_b005_async10_eval20",
+            "infer_Countdown_experiments_TBA_qwen3_noCenter_emaRef_a09_b005_async10_eval20_iter2",
+        ], "tab:red", "-"),
+        ("Exact, IS off", [
+            "infer_Countdown_experiments_TBA_qwen3_noCenter_emaRef_a09_b005_async10_eval20_noIS",
+        ], "tab:red", "--"),
+        ("Approx, IS on", [
+            "infer_Countdown_experiments_TBA_qwen3_noCenterByAlias_emaRef_a09_approxUse_b005_async10_eval20",
+            "infer_Countdown_experiments_TBA_qwen3_noCenter_emaRef_a09_approxUse_b005_async10_eval20_iter2",
+        ], "tab:blue", "-"),
+        ("Approx, IS off", [
+            "infer_Countdown_experiments_TBA_qwen3_noCenter_emaRef_a09_approxUse_b005_async10_eval20_noIS",
+        ], "tab:blue", "--"),
+    ]
+    for label, runs, color, ls in families:
+        _plot_with_replicates(ax, runs, color, ls, label)
+    ax.set_xlabel("training step")
+    ax.set_ylabel("Countdown eval accuracy (pass@1)")
+    ax.set_title("IS ablation: EMA + no centering")
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="lower right", fontsize=9)
+    ax.set_ylim(0, 0.9)
+    fig.tight_layout()
+    out = OUT / "fig_ablation_is.pdf"
+    fig.savefig(out); plt.close(fig); print("wrote", out)
+
+
+def fig_ablation_alpha():
+    """α ablation on no-centering exact (β·c held constant at 0.0045)."""
+    fig, ax = plt.subplots(figsize=(7.5, 4.5))
+    families = [
+        ("$\\alpha = 0.8$, $\\beta = 0.01125$", [
+            "infer_Countdown_experiments_TBA_qwen3_noCenter_emaRef_a08_b01125_async10_eval20",
+        ], "tab:orange", "-"),
+        ("$\\alpha = 0.9$, $\\beta = 0.005$ (baseline)", [
+            "infer_Countdown_experiments_TBA_qwen3_noCenter_emaRef_a09_b005_async10_eval20",
+            "infer_Countdown_experiments_TBA_qwen3_noCenter_emaRef_a09_b005_async10_eval20_iter2",
+        ], "tab:red", "-"),
+        ("$\\alpha = 0.95$, $\\beta = 0.002368$", [
+            "infer_Countdown_experiments_TBA_qwen3_noCenter_emaRef_a095_b002368_async10_eval20",
+        ], "tab:brown", "-"),
+    ]
+    for label, runs, color, ls in families:
+        _plot_with_replicates(ax, runs, color, ls, label)
+    ax.set_xlabel("training step")
+    ax.set_ylabel("Countdown eval accuracy (pass@1)")
+    ax.set_title("$\\alpha$ ablation: EMA exact + no centering, $\\beta c$ held constant")
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="lower right", fontsize=9)
+    ax.set_ylim(0, 0.9)
+    fig.tight_layout()
+    out = OUT / "fig_ablation_alpha.pdf"
+    fig.savefig(out); plt.close(fig); print("wrote", out)
+
+
 if __name__ == "__main__":
     fig_matrix()
     fig_reset_is()
     fig_reset_nois()
     fig_approx_error()
+    fig_ablation_beta()
+    fig_ablation_is()
+    fig_ablation_alpha()

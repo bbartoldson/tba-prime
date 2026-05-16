@@ -159,6 +159,43 @@ We track the per-token error of the first-order surrogate against the exact EMA 
 
 MAE stays in the low $10^{-2}$ band throughout training, and the signed bias is at most a few parts in $10^{3}$. The approximation is empirically faithful, regardless of whether it is used in the loss.
 
+\section{Ablations}
+
+We probe three knobs in the no-centering / K-centered EMA cells. Some of the runs cited here are still in progress, so trend lines for the newest variants may be short.
+
+\subsection{$\beta$ ablation on the K-centered cell (A)}
+
+Cell A (EMA exact + klMeanTrain centering) showed a late-run collapse around step $\sim 300$ at the baseline $\beta=0.005$. Does scaling the KL penalty up rescue it?
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.95\linewidth]{fig_ablation_beta.pdf}
+  \caption{$\beta$ ablation on K-centered exact KL (cell A). Larger $\beta$ trades off learning speed against the K-centered instability.}
+  \label{fig:ablation-beta}
+\end{figure}
+
+\subsection{Importance sampling ablation on no-centering}
+
+The no-centering cells B and D (exact and approx) were the top-performing matrix entries at $\beta=0.005$ with IS on. Turning IS off keeps the same conclusion that no centering is best, but at lower absolute accuracy and with late-run instability.
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.95\linewidth]{fig_ablation_is.pdf}
+  \caption{IS ablation on no-centering cells. Solid: IS on. Dashed: IS off. Red: exact KL (cell B). Blue: approx KL (cell D).}
+  \label{fig:ablation-is}
+\end{figure}
+
+\subsection{$\alpha$ ablation on no-centering exact}
+
+Sweep the EMA decay $\alpha \in \{0.8, 0.9, 0.95\}$ while holding the effective regularization strength constant ($\beta\cdot c_\alpha = 0.0045$, where $c_\alpha = \alpha/(\Delta(1-\alpha))$).
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.95\linewidth]{fig_ablation_alpha.pdf}
+  \caption{$\alpha$ ablation on no-centering exact KL with $\beta$ scaled to keep $\beta\cdot c_\alpha$ constant.}
+  \label{fig:ablation-alpha}
+\end{figure}
+
 \section{Conclusion}
 
 Removing the K-group centering is the dominant lever: both EMA exact and EMA approx benefit. With centering off, the cheap first-order surrogate matches the exact EMA KL within $0.005$ on peak eval and $0.002$ on final eval, so it is a viable drop-in replacement that saves a forward pass through the reference model.
