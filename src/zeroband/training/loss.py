@@ -302,6 +302,13 @@ def tba_loss(
             delta_ref = rescaled_actual - approx_ref
             mae_vs_alpha09 = (delta_ref.abs() * m).sum() / n
             bias_vs_alpha09 = (delta_ref * m).sum() / n
+            # Per-sequence relative error of the cross-alpha comparison:
+            #   |avg error per seq| / |avg c_0.9*diff per seq|, averaged.
+            ref_seq = (approx_ref * m).sum(1) / m_per_seq
+            err_seq = (delta_ref * m).sum(1) / m_per_seq
+            mae_err_seq = (delta_ref.abs() * m).sum(1) / m_per_seq
+            seq_rel_err_of_means_vs_alpha09 = (err_seq.abs() / (ref_seq.abs() + 1e-8)).mean()
+            seq_rel_err_mae_vs_alpha09 = (mae_err_seq / (ref_seq.abs() + 1e-8)).mean()
             metrics_out["kl_approx/mae"] = mae.detach()
             metrics_out["kl_approx/bias"] = bias.detach()
             metrics_out["kl_approx/rel_err"] = rel_err.detach()
@@ -312,6 +319,8 @@ def tba_loss(
             metrics_out["kl_approx/seq_rel_err_mae"] = seq_rel_err_mae.detach()
             metrics_out["kl_approx/mae_vs_alpha09"] = mae_vs_alpha09.detach()
             metrics_out["kl_approx/bias_vs_alpha09"] = bias_vs_alpha09.detach()
+            metrics_out["kl_approx/seq_rel_err_of_means_vs_alpha09"] = seq_rel_err_of_means_vs_alpha09.detach()
+            metrics_out["kl_approx/seq_rel_err_mae_vs_alpha09"] = seq_rel_err_mae_vs_alpha09.detach()
 
         if kl_approx == "ema_first_order_use":
             kl_per_token_for_loss = kl_per_token_approx
