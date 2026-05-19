@@ -247,6 +247,15 @@ def fig_ablation_alpha():
     """α ablation on no-centering exact (β·c held constant at 0.0045)."""
     fig, ax = plt.subplots(figsize=(7.5, 4.5))
     families = [
+        ("$\\alpha = 0.1$, $\\beta = 0.405$", [
+            "infer_Countdown_experiments_TBA_qwen3_noCenter_emaRef_a01_b405_async10_eval20",
+        ], "tab:gray", "-"),
+        ("$\\alpha = 0.2$, $\\beta = 0.18$", [
+            "infer_Countdown_experiments_TBA_qwen3_noCenter_emaRef_a02_b18_async10_eval20",
+        ], "tab:pink", "-"),
+        ("$\\alpha = 0.5$, $\\beta = 0.045$", [
+            "infer_Countdown_experiments_TBA_qwen3_noCenter_emaRef_a05_b045_async10_eval20",
+        ], "tab:cyan", "-"),
         ("$\\alpha = 0.7$, $\\beta = 0.01929$", [
             "infer_Countdown_experiments_TBA_qwen3_noCenter_emaRef_a07_b01929_async10_eval20",
         ], "tab:olive", "-"),
@@ -360,6 +369,9 @@ def fig_approx_error_alpha():
     """Per-token MAE and α=0.9-rescaled MAE of the first-order surrogate across α-sweep."""
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.3))
     alphas = [
+        ("$\\alpha=0.1$",  ["Countdown_experiments_TBA_qwen3_noCenter_emaRef_a01_b405_async10_eval20"], "tab:gray"),
+        ("$\\alpha=0.2$",  ["Countdown_experiments_TBA_qwen3_noCenter_emaRef_a02_b18_async10_eval20"], "tab:pink"),
+        ("$\\alpha=0.5$",  ["Countdown_experiments_TBA_qwen3_noCenter_emaRef_a05_b045_async10_eval20"], "tab:cyan"),
         ("$\\alpha=0.7$",  ["Countdown_experiments_TBA_qwen3_noCenter_emaRef_a07_b01929_async10_eval20"], "tab:olive"),
         ("$\\alpha=0.8$",  ["Countdown_experiments_TBA_qwen3_noCenter_emaRef_a08_b01125_async10_eval20",
                             "Countdown_experiments_TBA_qwen3_noCenter_emaRef_a08_b01125_async10_eval20_iter2"], "tab:orange"),
