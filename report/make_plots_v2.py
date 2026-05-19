@@ -192,6 +192,7 @@ def fig_ablation_beta():
         ], "tab:blue", "-"),
         ("$\\beta = 0.01$", [
             "infer_Countdown_experiments_TBA_qwen3_klMeanTrain_emaRef_a09_b01_async10_eval20",
+            "infer_Countdown_experiments_TBA_qwen3_klMeanTrain_emaRef_a09_b01_async10_eval20_iter2",
         ], "tab:purple", "-"),
         ("$\\beta = 0.05$", [
             "infer_Countdown_experiments_TBA_qwen3_klMeanTrain_emaRef_a09_b05_async10_eval20",
@@ -246,8 +247,12 @@ def fig_ablation_alpha():
     """α ablation on no-centering exact (β·c held constant at 0.0045)."""
     fig, ax = plt.subplots(figsize=(7.5, 4.5))
     families = [
+        ("$\\alpha = 0.7$, $\\beta = 0.01929$", [
+            "infer_Countdown_experiments_TBA_qwen3_noCenter_emaRef_a07_b01929_async10_eval20",
+        ], "tab:olive", "-"),
         ("$\\alpha = 0.8$, $\\beta = 0.01125$", [
             "infer_Countdown_experiments_TBA_qwen3_noCenter_emaRef_a08_b01125_async10_eval20",
+            "infer_Countdown_experiments_TBA_qwen3_noCenter_emaRef_a08_b01125_async10_eval20_iter2",
         ], "tab:orange", "-"),
         ("$\\alpha = 0.9$, $\\beta = 0.005$ (baseline)", [
             "infer_Countdown_experiments_TBA_qwen3_noCenter_emaRef_a09_b005_async10_eval20",
@@ -255,7 +260,14 @@ def fig_ablation_alpha():
         ], "tab:red", "-"),
         ("$\\alpha = 0.95$, $\\beta = 0.002368$", [
             "infer_Countdown_experiments_TBA_qwen3_noCenter_emaRef_a095_b002368_async10_eval20",
+            "infer_Countdown_experiments_TBA_qwen3_noCenter_emaRef_a095_b002368_async10_eval20_iter2",
         ], "tab:brown", "-"),
+        ("$\\alpha = 0.98$, $\\beta = 0.0009183$", [
+            "infer_Countdown_experiments_TBA_qwen3_noCenter_emaRef_a098_b0009183_async10_eval20",
+        ], "tab:green", "-"),
+        ("$\\alpha = 0.99$, $\\beta = 0.0004545$", [
+            "infer_Countdown_experiments_TBA_qwen3_noCenter_emaRef_a099_b0004545_async10_eval20",
+        ], "tab:purple", "-"),
     ]
     for label, runs, color, ls in families:
         _plot_with_replicates(ax, runs, color, ls, label)
@@ -270,6 +282,91 @@ def fig_ablation_alpha():
     fig.savefig(out); plt.close(fig); print("wrote", out)
 
 
+def fig_ablation_beta_noIS():
+    """β ablation on the no-centering, IS-off EMA cell (B-noIS)."""
+    fig, ax = plt.subplots(figsize=(7.5, 4.5))
+    families = [
+        ("$\\beta = 0.005$ (baseline)", [
+            "infer_Countdown_experiments_TBA_qwen3_noCenter_emaRef_a09_b005_async10_eval20_noIS",
+        ], "tab:blue", "-"),
+        ("$\\beta = 0.01$", [
+            "infer_Countdown_experiments_TBA_qwen3_noCenter_emaRef_a09_b01_async10_eval20_noIS",
+            "infer_Countdown_experiments_TBA_qwen3_noCenter_emaRef_a09_b01_async10_eval20_noIS_iter2",
+        ], "tab:red", "-"),
+    ]
+    for label, runs, color, ls in families:
+        _plot_with_replicates(ax, runs, color, ls, label)
+    ax.set_xlabel("training step")
+    ax.set_ylabel("Countdown eval accuracy (pass@1)")
+    ax.set_title("$\\beta$ ablation: EMA exact + no centering, IS off")
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="lower right", fontsize=9)
+    ax.set_ylim(0, 0.9)
+    fig.tight_layout()
+    out = OUT / "fig_ablation_beta_noIS.pdf"
+    fig.savefig(out); plt.close(fig); print("wrote", out)
+
+
+def fig_ablation_beta_reset():
+    """β ablation on the reset-reference T/T cell."""
+    fig, ax = plt.subplots(figsize=(7.5, 4.5))
+    families = [
+        ("$\\beta = 0.005$ (baseline)", [
+            "infer_Countdown_experiments_TBA_qwen3_klMeanTrain_b005_async10_eval20",
+        ], "tab:blue", "-"),
+        ("$\\beta = 0.008$", [
+            "infer_Countdown_experiments_TBA_qwen3_klMeanTrain_b008_async10_eval20",
+        ], "tab:green", "-"),
+        ("$\\beta = 0.01$", [
+            "infer_Countdown_experiments_TBA_qwen3_klMeanTrain_b01_async10_eval20",
+            "infer_Countdown_experiments_TBA_qwen3_klMeanTrain_b01_async10_eval20_iter2",
+        ], "tab:purple", "-"),
+        ("$\\beta = 0.05$", [
+            "infer_Countdown_experiments_TBA_qwen3_klMeanTrain_b05_async10_eval20",
+            "infer_Countdown_experiments_TBA_qwen3_klMeanTrain_b05_async10_eval20_iter2",
+        ], "tab:red", "-"),
+    ]
+    for label, runs, color, ls in families:
+        _plot_with_replicates(ax, runs, color, ls, label)
+    ax.set_xlabel("training step")
+    ax.set_ylabel("Countdown eval accuracy (pass@1)")
+    ax.set_title("$\\beta$ ablation: reset reference, $T/T$ (klMeanTrain)")
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="lower right", fontsize=9)
+    ax.set_ylim(0, 0.9)
+    fig.tight_layout()
+    out = OUT / "fig_ablation_beta_reset.pdf"
+    fig.savefig(out); plt.close(fig); print("wrote", out)
+
+
+def fig_ablation_beta_approx():
+    """β ablation on the no-centering approx EMA cell (D)."""
+    fig, ax = plt.subplots(figsize=(7.5, 4.5))
+    families = [
+        ("$\\beta = 0.0005$", [
+            "infer_Countdown_experiments_TBA_qwen3_noCenter_emaRef_a09_approxUse_b0005_async10_eval20",
+        ], "tab:green", "-"),
+        ("$\\beta = 0.005$ (baseline)", [
+            "infer_Countdown_experiments_TBA_qwen3_noCenterByAlias_emaRef_a09_approxUse_b005_async10_eval20",
+            "infer_Countdown_experiments_TBA_qwen3_noCenter_emaRef_a09_approxUse_b005_async10_eval20_iter2",
+        ], "tab:blue", "-"),
+        ("$\\beta = 0.05$", [
+            "infer_Countdown_experiments_TBA_qwen3_noCenter_emaRef_a09_approxUse_b05_async10_eval20",
+        ], "tab:red", "-"),
+    ]
+    for label, runs, color, ls in families:
+        _plot_with_replicates(ax, runs, color, ls, label)
+    ax.set_xlabel("training step")
+    ax.set_ylabel("Countdown eval accuracy (pass@1)")
+    ax.set_title("$\\beta$ ablation: EMA approx + no centering (cell D)")
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="lower right", fontsize=9)
+    ax.set_ylim(0, 0.9)
+    fig.tight_layout()
+    out = OUT / "fig_ablation_beta_approx.pdf"
+    fig.savefig(out); plt.close(fig); print("wrote", out)
+
+
 if __name__ == "__main__":
     fig_matrix()
     fig_reset_is()
@@ -278,3 +375,6 @@ if __name__ == "__main__":
     fig_ablation_beta()
     fig_ablation_is()
     fig_ablation_alpha()
+    fig_ablation_beta_noIS()
+    fig_ablation_beta_reset()
+    fig_ablation_beta_approx()

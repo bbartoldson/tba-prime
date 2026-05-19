@@ -30,11 +30,6 @@
 \newlabel{fig:reset-is}{{2}{3}{Eval accuracy on Countdown with periodic-reset reference and importance sampling on. $T/T$ (red) collapses late in training; $I/I$ (green) is unstable; only $T/I$ (blue) trains stably to high accuracy}{figure.2}{}}
 \@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Eval accuracy on Countdown with periodic-reset reference and importance sampling off. The same ordering holds — $T/I$ best, $T/T$ collapses, $I/I$ gets stuck near zero — and all three are weaker than their IS-on counterparts.}}{3}{figure.3}\protected@file@percent }
 \newlabel{fig:reset-nois}{{3}{3}{Eval accuracy on Countdown with periodic-reset reference and importance sampling off. The same ordering holds — $T/I$ best, $T/T$ collapses, $I/I$ gets stuck near zero — and all three are weaker than their IS-on counterparts}{figure.3}{}}
-\newlabel{tocindent-1}{0pt}
-\newlabel{tocindent0}{0pt}
-\newlabel{tocindent1}{19.4667pt}
-\newlabel{tocindent2}{32.18062pt}
-\newlabel{tocindent3}{0pt}
 \@writefile{toc}{\contentsline {section}{\tocsection {}{4}{Approximation accuracy}}{4}{section.4}\protected@file@percent }
 \@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Per-token MAE (left) and signed bias (right) of the first-order surrogate $\genfrac  {}{}{}1{\alpha }{\Delta (1-\alpha )}\,\bigl  (\qopname  \relax o{log}T_n(y) - \qopname  \relax o{log}T_{n-\Delta }(y)\bigr  )$ against the exact $\qopname  \relax o{log}T_n(y) - \qopname  \relax o{log}E_n(y)$, averaged over masked tokens within each rollout. Both runs are no-centering EMA-reference cells; they differ only in which formula enters the loss (red: exact KL; blue: approx KL).}}{4}{figure.4}\protected@file@percent }
 \newlabel{fig:approx-error}{{4}{4}{Per-token MAE (left) and signed bias (right) of the first-order surrogate $\klapprox $ against the exact $\klexact $, averaged over masked tokens within each rollout. Both runs are no-centering EMA-reference cells; they differ only in which formula enters the loss (red: exact KL; blue: approx KL)}{figure.4}{}}
@@ -42,11 +37,25 @@
 \@writefile{toc}{\contentsline {subsection}{\tocsubsection {}{5.1}{$\beta $ ablation on the K-centered cell (A)}}{4}{subsection.5.1}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\tocsubsection {}{5.2}{Importance sampling ablation on no-centering}}{4}{subsection.5.2}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\tocsubsection {}{5.3}{$\alpha $ ablation on no-centering exact}}{4}{subsection.5.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\tocsection {}{6}{Conclusion}}{4}{section.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\tocsubsection {}{5.4}{$\beta $ ablation on no-centering, IS off (B-noIS)}}{4}{subsection.5.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\tocsubsection {}{5.5}{$\beta $ ablation on reset reference, $T/T$}}{4}{subsection.5.5}\protected@file@percent }
+\newlabel{tocindent-1}{0pt}
+\newlabel{tocindent0}{0pt}
+\newlabel{tocindent1}{19.4667pt}
+\newlabel{tocindent2}{32.18062pt}
+\newlabel{tocindent3}{0pt}
 \@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces $\beta $ ablation on K-centered exact KL (cell A). Larger $\beta $ trades off learning speed against the K-centered instability.}}{5}{figure.5}\protected@file@percent }
 \newlabel{fig:ablation-beta}{{5}{5}{$\beta $ ablation on K-centered exact KL (cell A). Larger $\beta $ trades off learning speed against the K-centered instability}{figure.5}{}}
 \@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces IS ablation on no-centering cells. Solid: IS on. Dashed: IS off. Red: exact KL (cell B). Blue: approx KL (cell D).}}{5}{figure.6}\protected@file@percent }
 \newlabel{fig:ablation-is}{{6}{5}{IS ablation on no-centering cells. Solid: IS on. Dashed: IS off. Red: exact KL (cell B). Blue: approx KL (cell D)}{figure.6}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces $\alpha $ ablation on no-centering exact KL with $\beta $ scaled to keep $\beta \cdot c_\alpha $ constant.}}{6}{figure.7}\protected@file@percent }
-\newlabel{fig:ablation-alpha}{{7}{6}{$\alpha $ ablation on no-centering exact KL with $\beta $ scaled to keep $\beta \cdot c_\alpha $ constant}{figure.7}{}}
-\gdef \@abspage@last{6}
+\@writefile{toc}{\contentsline {subsection}{\tocsubsection {}{5.6}{$\beta $ ablation on no-centering, approx KL (cell D)}}{5}{subsection.5.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\tocsection {}{6}{Conclusion}}{5}{section.6}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces $\alpha $ ablation on no-centering exact KL with $\beta $ scaled to keep $\beta \cdot c_\alpha $ constant. Higher $\alpha $ (slower EMA) becomes unstable: $\alpha =0.99$ collapses around step $\sim 200$, $\alpha =0.98$ partially collapses around step $\sim 300{-}400$; $\alpha \in \{0.8, 0.95\}$ match or beat the $\alpha =0.9$ baseline.}}{6}{figure.7}\protected@file@percent }
+\newlabel{fig:ablation-alpha}{{7}{6}{$\alpha $ ablation on no-centering exact KL with $\beta $ scaled to keep $\beta \cdot c_\alpha $ constant. Higher $\alpha $ (slower EMA) becomes unstable: $\alpha =0.99$ collapses around step $\sim 200$, $\alpha =0.98$ partially collapses around step $\sim 300{-}400$; $\alpha \in \{0.8, 0.95\}$ match or beat the $\alpha =0.9$ baseline}{figure.7}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces $\beta $ ablation on no-centering exact KL with IS off (B-noIS family).}}{6}{figure.8}\protected@file@percent }
+\newlabel{fig:ablation-beta-nois}{{8}{6}{$\beta $ ablation on no-centering exact KL with IS off (B-noIS family)}{figure.8}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {9}{\ignorespaces $\beta $ ablation on the reset-reference $T/T$ cell (klMeanTrain). Larger $\beta $ prevents the late-run instability seen at $\beta =0.005$ (no collapse observed through step $\sim 580$ at $\beta =0.01$ or $\beta =0.05$).}}{7}{figure.9}\protected@file@percent }
+\newlabel{fig:ablation-beta-reset}{{9}{7}{$\beta $ ablation on the reset-reference $T/T$ cell (klMeanTrain). Larger $\beta $ prevents the late-run instability seen at $\beta =0.005$ (no collapse observed through step $\sim 580$ at $\beta =0.01$ or $\beta =0.05$)}{figure.9}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {10}{\ignorespaces $\beta $ ablation on no-centering approx KL (cell D). Baseline $\beta =0.005$ vs.\ $\beta =0.05$ (10$\times $) and $\beta =0.0005$ (0.1$\times $). The cell is robust to weakening $\beta $ (no early-run impact at $\beta =0.0005$) but slower learning at $\beta =0.05$.}}{7}{figure.10}\protected@file@percent }
+\newlabel{fig:ablation-beta-approx}{{10}{7}{$\beta $ ablation on no-centering approx KL (cell D). Baseline $\beta =0.005$ vs.\ $\beta =0.05$ (10$\times $) and $\beta =0.0005$ (0.1$\times $). The cell is robust to weakening $\beta $ (no early-run impact at $\beta =0.0005$) but slower learning at $\beta =0.05$}{figure.10}{}}
+\gdef \@abspage@last{7}

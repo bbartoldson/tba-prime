@@ -187,13 +187,46 @@ The no-centering cells B and D (exact and approx) were the top-performing matrix
 
 \subsection{$\alpha$ ablation on no-centering exact}
 
-Sweep the EMA decay $\alpha \in \{0.8, 0.9, 0.95\}$ while holding the effective regularization strength constant ($\beta\cdot c_\alpha = 0.0045$, where $c_\alpha = \alpha/(\Delta(1-\alpha))$).
+Sweep the EMA decay $\alpha \in \{0.7, 0.8, 0.9, 0.95, 0.98, 0.99\}$ while holding the effective regularization strength constant ($\beta\cdot c_\alpha = 0.0045$, where $c_\alpha = \alpha/(\Delta(1-\alpha))$).
 
 \begin{figure}[ht]
   \centering
   \includegraphics[width=0.95\linewidth]{fig_ablation_alpha.pdf}
-  \caption{$\alpha$ ablation on no-centering exact KL with $\beta$ scaled to keep $\beta\cdot c_\alpha$ constant.}
+  \caption{$\alpha$ ablation on no-centering exact KL with $\beta$ scaled to keep $\beta\cdot c_\alpha$ constant. Higher $\alpha$ (slower EMA) becomes unstable: $\alpha=0.99$ collapses around step $\sim 200$, $\alpha=0.98$ partially collapses around step $\sim 300{-}400$; $\alpha \in \{0.8, 0.95\}$ match or beat the $\alpha=0.9$ baseline.}
   \label{fig:ablation-alpha}
+\end{figure}
+
+\subsection{$\beta$ ablation on no-centering, IS off (B-noIS)}
+
+The no-centering exact cell with IS disabled also shows late-run instability at the baseline $\beta=0.005$. Does scaling $\beta$ up help here too?
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.95\linewidth]{fig_ablation_beta_noIS.pdf}
+  \caption{$\beta$ ablation on no-centering exact KL with IS off (B-noIS family).}
+  \label{fig:ablation-beta-nois}
+\end{figure}
+
+\subsection{$\beta$ ablation on reset reference, $T/T$}
+
+The reset-reference $T/T$ variant collapsed late at the baseline $\beta=0.005$. Does scaling $\beta$ up rescue the collapse, as it might for the analogous EMA-reference K-centered cell?
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.95\linewidth]{fig_ablation_beta_reset.pdf}
+  \caption{$\beta$ ablation on the reset-reference $T/T$ cell (klMeanTrain). Larger $\beta$ prevents the late-run instability seen at $\beta=0.005$ (no collapse observed through step $\sim 580$ at $\beta=0.01$ or $\beta=0.05$).}
+  \label{fig:ablation-beta-reset}
+\end{figure}
+
+\subsection{$\beta$ ablation on no-centering, approx KL (cell D)}
+
+We also sweep $\beta$ for the approx-KL no-centering cell to test the regularization sensitivity of the approx-KL path (cell D, $\alpha=0.9$).
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.95\linewidth]{fig_ablation_beta_approx.pdf}
+  \caption{$\beta$ ablation on no-centering approx KL (cell D). Baseline $\beta=0.005$ vs.\ $\beta=0.05$ (10$\times$) and $\beta=0.0005$ (0.1$\times$). The cell is robust to weakening $\beta$ (no early-run impact at $\beta=0.0005$) but slower learning at $\beta=0.05$.}
+  \label{fig:ablation-beta-approx}
 \end{figure}
 
 \section{Conclusion}

@@ -206,6 +206,7 @@ def train(config: TrainingConfig):
 
     logger.info("Starting training loop")
     next_reference_reset_step = config.grpo.reference_reset_interval if config.grpo.reference_reset_interval else float("inf")
+    last_inference_snapshot: OffloadedTensor | None = None
 
     # --- Configuration ---
     tb_beta = config.grpo.off_policy.beta if isinstance(config.grpo.off_policy, TBConfig) else None
@@ -250,6 +251,9 @@ def train(config: TrainingConfig):
                 og_infer_step = training_progress.step // config.optim.step_per_rollout - config.max_async_level
                 infer_step = max(og_infer_step, 0)
                 wake_up_model_from_cpu(model_for_logprob_only, tensor_offloaded_repository[infer_step])
+                # Hold a reference so this CPU snapshot survives a downstream del,
+                # in case reset-reference needs to copy from the inference policy.
+                last_inference_snapshot = tensor_offloaded_repository[infer_step]
 
                 if og_infer_step == infer_step:
                     del tensor_offloaded_repository[infer_step]
@@ -660,13 +664,29 @@ def train(config: TrainingConfig):
                 # we could change the code later to work for both
                 assert config.grpo.kl_coef is None, "resetting only works for TB right now"
 
-                logger.info(f"Resetting reference model at step {training_progress.step}")
+                # When per-sample KL uses the inference snapshot, resetting R from
+                # the current train model would leave R ahead of T_inf for the first
+                # Δ steps after each reset (because T_inf lags T_n by Δ). Copy the
+                # inference snapshot instead so R consistently lags T_inf.
+                use_inference_for_reset = (
+                    isinstance(config.grpo.off_policy, TBConfig)
+                    and config.grpo.off_policy.kl_per_sample_source == "inference"
+                    and last_inference_snapshot is not None
+                )
+                src_desc = "inference snapshot" if use_inference_for_reset else "train model"
+                logger.info(f"Resetting reference model at step {training_progress.step} from {src_desc}")
 
                 # If reference model is offloaded, wake it up first
                 # wake_up_model_from_cpu(model_reference, tensor_offloaded_repository[0])
 
-                # Copy weights from training model to reference model
-                copy_model_weights_fsdp(model, model_reference)
+                if use_inference_for_reset:
+                    # FSDP: model_reference is unsharded after forward passes, but
+                    # the CPU snapshot was captured from a sharded module. Reshard
+                    # so per-rank shapes match before copying.
+                    reshard_module(model_reference)
+                    wake_up_model_from_cpu(model_reference, last_inference_snapshot)
+                else:
+                    copy_model_weights_fsdp(model, model_reference)
 
                 # Re-offload reference model if it was offloaded
                 # reshard_module(model_reference)
