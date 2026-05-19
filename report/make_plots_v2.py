@@ -339,6 +339,55 @@ def fig_ablation_beta_reset():
     fig.savefig(out); plt.close(fig); print("wrote", out)
 
 
+def _plot_metric_with_replicates(ax, runs, color, label, key):
+    """Plot mean line of a training-side metric across replicate runs."""
+    histories = []
+    for name in runs:
+        x, y = metric_history(name, key)
+        if x:
+            histories.append(dict(zip(x, y)))
+    if not histories:
+        return
+    steps = sorted(set().union(*[set(h.keys()) for h in histories]))
+    means = []
+    for s in steps:
+        vals = [h[s] for h in histories if s in h]
+        means.append(sum(vals)/len(vals))
+    ax.plot(steps, means, color=color, linewidth=1.4, label=label)
+
+
+def fig_approx_error_alpha():
+    """Per-token MAE and α=0.9-rescaled MAE of the first-order surrogate across α-sweep."""
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.3))
+    alphas = [
+        ("$\\alpha=0.7$",  ["Countdown_experiments_TBA_qwen3_noCenter_emaRef_a07_b01929_async10_eval20"], "tab:olive"),
+        ("$\\alpha=0.8$",  ["Countdown_experiments_TBA_qwen3_noCenter_emaRef_a08_b01125_async10_eval20",
+                            "Countdown_experiments_TBA_qwen3_noCenter_emaRef_a08_b01125_async10_eval20_iter2"], "tab:orange"),
+        ("$\\alpha=0.9$",  ["Countdown_experiments_TBA_qwen3_noCenter_emaRef_a09_b005_async10_eval20",
+                            "Countdown_experiments_TBA_qwen3_noCenter_emaRef_a09_b005_async10_eval20_iter2"], "tab:red"),
+        ("$\\alpha=0.95$", ["Countdown_experiments_TBA_qwen3_noCenter_emaRef_a095_b002368_async10_eval20",
+                            "Countdown_experiments_TBA_qwen3_noCenter_emaRef_a095_b002368_async10_eval20_iter2"], "tab:brown"),
+        ("$\\alpha=0.98$", ["Countdown_experiments_TBA_qwen3_noCenter_emaRef_a098_b0009183_async10_eval20"], "tab:green"),
+        ("$\\alpha=0.99$", ["Countdown_experiments_TBA_qwen3_noCenter_emaRef_a099_b0004545_async10_eval20"], "tab:purple"),
+    ]
+    for label, runs, color in alphas:
+        _plot_metric_with_replicates(axes[0], runs, color, label, "kl_approx/mae")
+        _plot_metric_with_replicates(axes[1], runs, color, label, "kl_approx/mae_vs_alpha09")
+    for ax, title, ylab in [
+        (axes[0], "per-token surrogate MAE (intrinsic)", "kl_approx/mae"),
+        (axes[1], "per-token MAE in $\\alpha=0.9$ scale", "kl_approx/mae_vs_alpha09"),
+    ]:
+        ax.set_xlabel("training step")
+        ax.set_ylabel(ylab)
+        ax.set_title(title)
+        ax.grid(True, alpha=0.3)
+        ax.set_yscale("log")
+    axes[0].legend(loc="lower right", fontsize=8)
+    fig.tight_layout()
+    out = OUT / "fig_approx_error_alpha.pdf"
+    fig.savefig(out); plt.close(fig); print("wrote", out)
+
+
 def fig_ablation_beta_approx():
     """β ablation on the no-centering approx EMA cell (D)."""
     fig, ax = plt.subplots(figsize=(7.5, 4.5))
@@ -378,3 +427,4 @@ if __name__ == "__main__":
     fig_ablation_beta_noIS()
     fig_ablation_beta_reset()
     fig_ablation_beta_approx()
+    fig_approx_error_alpha()

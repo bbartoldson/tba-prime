@@ -159,6 +159,16 @@ We track the per-token error of the first-order surrogate against the exact EMA 
 
 MAE stays in the low $10^{-2}$ band throughout training, and the signed bias is at most a few parts in $10^{3}$. The approximation is empirically faithful, regardless of whether it is used in the loss.
 
+\paragraph{Across the $\alpha$-sweep.}
+The same metric is logged for every $\alpha$ run. The intrinsic MAE scales with $c_\alpha$, since the exact KL grows like $c_\alpha \cdot (\log T_n - \log T_{n-\Delta})$. We therefore also track a rescaled quantity, $(c_{0.9}/c_\alpha)\,\KL_{\text{exact}} - c_{0.9}\,\text{diff}$, whose magnitude should be roughly $\alpha$-invariant if the first-order surrogate has the same fractional quality across $\alpha$.
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.98\linewidth]{fig_approx_error_alpha.pdf}
+  \caption{Per-token surrogate MAE across the $\alpha$-sweep. Left: intrinsic MAE (scales with $c_\alpha$). Right: MAE after rescaling to the $\alpha=0.9$ surrogate; comparable across $\alpha$ values.}
+  \label{fig:approx-error-alpha}
+\end{figure}
+
 \section{Ablations}
 
 We probe three knobs in the no-centering / K-centered EMA cells. Some of the runs cited here are still in progress, so trend lines for the newest variants may be short.
