@@ -36,11 +36,6 @@
 \@writefile{toc}{\contentsline {paragraph}{\tocparagraph {}{}{Across the $\alpha $-sweep.}}{4}{section*.3}\protected@file@percent }
 \@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Per-token surrogate MAE across the $\alpha $-sweep. Left: intrinsic MAE (scales with $c_\alpha $). Right: MAE after rescaling to the $\alpha =0.9$ surrogate; comparable across $\alpha $ values.}}{4}{figure.5}\protected@file@percent }
 \newlabel{fig:approx-error-alpha}{{5}{4}{Per-token surrogate MAE across the $\alpha $-sweep. Left: intrinsic MAE (scales with $c_\alpha $). Right: MAE after rescaling to the $\alpha =0.9$ surrogate; comparable across $\alpha $ values}{figure.5}{}}
-\newlabel{tocindent-1}{0pt}
-\newlabel{tocindent0}{0pt}
-\newlabel{tocindent1}{19.4667pt}
-\newlabel{tocindent2}{32.18062pt}
-\newlabel{tocindent3}{0pt}
 \@writefile{toc}{\contentsline {section}{\tocsection {}{5}{Ablations}}{5}{section.5}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\tocsubsection {}{5.1}{$\beta $ ablation on the K-centered cell (A)}}{5}{subsection.5.1}\protected@file@percent }
 \@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces $\beta $ ablation on K-centered exact KL (cell A). Larger $\beta $ trades off learning speed against the K-centered instability.}}{5}{figure.6}\protected@file@percent }
@@ -49,7 +44,13 @@
 \@writefile{toc}{\contentsline {subsection}{\tocsubsection {}{5.3}{$\alpha $ ablation on no-centering exact}}{5}{subsection.5.3}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\tocsubsection {}{5.4}{$\beta $ ablation on no-centering, IS off (B-noIS)}}{5}{subsection.5.4}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\tocsubsection {}{5.5}{$\beta $ ablation on reset reference, $T/T$}}{5}{subsection.5.5}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\tocsubsection {}{5.6}{$\beta $ ablation on no-centering, approx KL (cell D)}}{5}{subsection.5.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\tocsubsection {}{5.6}{$\beta $ ablation on reset reference, $I/I$}}{5}{subsection.5.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\tocsubsection {}{5.7}{$\beta $ ablation on no-centering, approx KL (cell D)}}{5}{subsection.5.7}\protected@file@percent }
+\newlabel{tocindent-1}{0pt}
+\newlabel{tocindent0}{0pt}
+\newlabel{tocindent1}{19.4667pt}
+\newlabel{tocindent2}{32.18062pt}
+\newlabel{tocindent3}{0pt}
 \@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces IS ablation on no-centering cells. Solid: IS on. Dashed: IS off. Red: exact KL (cell B). Blue: approx KL (cell D).}}{6}{figure.7}\protected@file@percent }
 \newlabel{fig:ablation-is}{{7}{6}{IS ablation on no-centering cells. Solid: IS on. Dashed: IS off. Red: exact KL (cell B). Blue: approx KL (cell D)}{figure.7}{}}
 \@writefile{lof}{\contentsline {figure}{\numberline {8}{\ignorespaces $\alpha $ ablation on no-centering exact KL with $\beta $ scaled to keep $\beta \cdot c_\alpha $ constant. Higher $\alpha $ (slower EMA) becomes unstable: $\alpha =0.99$ collapses around step $\sim 200$, $\alpha =0.98$ partially collapses around step $\sim 300{-}400$; $\alpha \in \{0.8, 0.95\}$ match or beat the $\alpha =0.9$ baseline.}}{6}{figure.8}\protected@file@percent }
@@ -59,6 +60,8 @@
 \newlabel{fig:ablation-beta-nois}{{9}{7}{$\beta $ ablation on no-centering exact KL with IS off (B-noIS family)}{figure.9}{}}
 \@writefile{lof}{\contentsline {figure}{\numberline {10}{\ignorespaces $\beta $ ablation on the reset-reference $T/T$ cell (klMeanTrain). Larger $\beta $ prevents the late-run instability seen at $\beta =0.005$ (no collapse observed through step $\sim 580$ at $\beta =0.01$ or $\beta =0.05$).}}{7}{figure.10}\protected@file@percent }
 \newlabel{fig:ablation-beta-reset}{{10}{7}{$\beta $ ablation on the reset-reference $T/T$ cell (klMeanTrain). Larger $\beta $ prevents the late-run instability seen at $\beta =0.005$ (no collapse observed through step $\sim 580$ at $\beta =0.01$ or $\beta =0.05$)}{figure.10}{}}
-\@writefile{lof}{\contentsline {figure}{\numberline {11}{\ignorespaces $\beta $ ablation on no-centering approx KL (cell D). Baseline $\beta =0.005$ vs.\ $\beta =0.05$ (10$\times $) and $\beta =0.0005$ (0.1$\times $). The cell is robust to weakening $\beta $ (no early-run impact at $\beta =0.0005$) but slower learning at $\beta =0.05$.}}{8}{figure.11}\protected@file@percent }
-\newlabel{fig:ablation-beta-approx}{{11}{8}{$\beta $ ablation on no-centering approx KL (cell D). Baseline $\beta =0.005$ vs.\ $\beta =0.05$ (10$\times $) and $\beta =0.0005$ (0.1$\times $). The cell is robust to weakening $\beta $ (no early-run impact at $\beta =0.0005$) but slower learning at $\beta =0.05$}{figure.11}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {11}{\ignorespaces $\beta $ ablation on the reset-reference $I/I$ cell (klAllInf). The $\beta =0.01$ variant also uses the inference-snapshot reset fix.}}{8}{figure.11}\protected@file@percent }
+\newlabel{fig:ablation-beta-reset-II}{{11}{8}{$\beta $ ablation on the reset-reference $I/I$ cell (klAllInf). The $\beta =0.01$ variant also uses the inference-snapshot reset fix}{figure.11}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {12}{\ignorespaces $\beta $ ablation on no-centering approx KL (cell D). Baseline $\beta =0.005$ vs.\ $\beta =0.05$ (10$\times $) and $\beta =0.0005$ (0.1$\times $). The cell is robust to weakening $\beta $ (no early-run impact at $\beta =0.0005$) but slower learning at $\beta =0.05$.}}{8}{figure.12}\protected@file@percent }
+\newlabel{fig:ablation-beta-approx}{{12}{8}{$\beta $ ablation on no-centering approx KL (cell D). Baseline $\beta =0.005$ vs.\ $\beta =0.05$ (10$\times $) and $\beta =0.0005$ (0.1$\times $). The cell is robust to weakening $\beta $ (no early-run impact at $\beta =0.0005$) but slower learning at $\beta =0.05$}{figure.12}{}}
 \gdef \@abspage@last{8}

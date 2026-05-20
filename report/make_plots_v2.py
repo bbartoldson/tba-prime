@@ -400,6 +400,35 @@ def fig_approx_error_alpha():
     fig.savefig(out); plt.close(fig); print("wrote", out)
 
 
+def fig_ablation_beta_reset_II():
+    """β ablation on the reset-reference I/I cell (klAllInf).
+
+    The β=0.01 variant uses an additional code change: reset reference is copied
+    from the inference snapshot, not the live train model, since per-sample KL
+    uses inference logprobs.
+    """
+    fig, ax = plt.subplots(figsize=(7.5, 4.5))
+    families = [
+        ("$\\beta = 0.005$ (baseline)", [
+            "infer_Countdown_experiments_TBA_qwen3_klAllInf_b005_async10_eval20",
+        ], "tab:blue", "-"),
+        ("$\\beta = 0.01$ (+ infer-snapshot reset)", [
+            "infer_Countdown_experiments_TBA_qwen3_klAllInf_b01_async10_eval20",
+        ], "tab:red", "-"),
+    ]
+    for label, runs, color, ls in families:
+        _plot_with_replicates(ax, runs, color, ls, label)
+    ax.set_xlabel("training step")
+    ax.set_ylabel("Countdown eval accuracy (pass@1)")
+    ax.set_title("$\\beta$ ablation: reset reference, $I/I$ (klAllInf)")
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="lower right", fontsize=9)
+    ax.set_ylim(0, 0.9)
+    fig.tight_layout()
+    out = OUT / "fig_ablation_beta_reset_II.pdf"
+    fig.savefig(out); plt.close(fig); print("wrote", out)
+
+
 def fig_ablation_beta_approx():
     """β ablation on the no-centering approx EMA cell (D)."""
     fig, ax = plt.subplots(figsize=(7.5, 4.5))
@@ -438,5 +467,6 @@ if __name__ == "__main__":
     fig_ablation_alpha()
     fig_ablation_beta_noIS()
     fig_ablation_beta_reset()
+    fig_ablation_beta_reset_II()
     fig_ablation_beta_approx()
     fig_approx_error_alpha()

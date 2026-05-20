@@ -228,6 +228,17 @@ The reset-reference $T/T$ variant collapsed late at the baseline $\beta=0.005$. 
   \label{fig:ablation-beta-reset}
 \end{figure}
 
+\subsection{$\beta$ ablation on reset reference, $I/I$}
+
+The $I/I$ variant uses the inference snapshot for both per-sample and K-mean KL. Since per-sample KL uses inference logprobs, we modified the reference reset to copy from the inference snapshot rather than the live train model (so $R$ consistently lags $T_{\text{inf}}$). We then probe whether raising $\beta$ helps the $I/I$ cell.
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.95\linewidth]{fig_ablation_beta_reset_II.pdf}
+  \caption{$\beta$ ablation on the reset-reference $I/I$ cell (klAllInf). The $\beta=0.01$ variant also uses the inference-snapshot reset fix.}
+  \label{fig:ablation-beta-reset-II}
+\end{figure}
+
 \subsection{$\beta$ ablation on no-centering, approx KL (cell D)}
 
 We also sweep $\beta$ for the approx-KL no-centering cell to test the regularization sensitivity of the approx-KL path (cell D, $\alpha=0.9$).
