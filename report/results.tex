@@ -250,6 +250,10 @@ We also sweep $\beta$ for the approx-KL no-centering cell to test the regulariza
   \label{fig:ablation-beta-approx}
 \end{figure}
 
+\subsection{Application: pipeline / heterogeneous-async RL}
+
+The $\beta\cdot c$ invariance suggests a per-rollout calibration in async pipelines where rollouts originate from inference snapshots of different ages. Concretely, if rollout~$i$ was generated from a snapshot $\Delta_i$ steps behind the current trainer, its implicit $c_i = \alpha/(\Delta_i(1-\alpha))$ varies. Scaling the KL coefficient as $\beta_i \propto 1/c_i$ keeps the regularization strength fixed across rollouts—the analogue of importance-sampling reweighting for the policy gradient, but for the KL term. This is the strongest application direction we see for these findings; we leave the experimental study for future work.
+
 \section{Conclusion}
 
 Removing the K-group centering is the dominant lever: both EMA exact and EMA approx benefit. With centering off, the cheap first-order surrogate matches the exact EMA KL within $0.005$ on peak eval and $0.002$ on final eval, so it is a viable drop-in replacement that saves a forward pass through the reference model.
