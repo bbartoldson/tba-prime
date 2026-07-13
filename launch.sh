@@ -197,7 +197,7 @@ cd "${REPO_DIR}"
 echo "Starting inference on GPUs ${INFER_GPUS}..."
 export VLLM_WORKER_MULTIPROC_METHOD=spawn
 ulimit -n 65536
-CUDA_VISIBLE_DEVICES=${INFER_GPUS} nohup uv run python src/zeroband/infer.py @ configs/inference/${conf} \
+CUDA_VISIBLE_DEVICES=${INFER_GPUS} nohup uv run --no-sync python src/zeroband/infer.py @ configs/inference/${conf} \
     $eval_interval $inf_seq_len ${infer_args} \
     --max_batch_size ${process_bs} \
     --model.name ${model} \
@@ -214,7 +214,7 @@ echo "Waiting 5 seconds for inference workers to initialize..."
 sleep 5
 
 echo "Starting training on GPUs ${TRAIN_GPUS}..."
-CUDA_VISIBLE_DEVICES=${TRAIN_GPUS} uv run torchrun --nproc_per_node=${train_nproc} src/zeroband/train.py \
+CUDA_VISIBLE_DEVICES=${TRAIN_GPUS} uv run --no-sync torchrun --nproc_per_node=${train_nproc} src/zeroband/train.py \
     @ configs/training/${conf} $train_seq_len \
     --optim.batch_size $bs \
     --model.name ${model} \

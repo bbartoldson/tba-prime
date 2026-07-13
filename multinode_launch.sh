@@ -228,7 +228,7 @@ cd ${REPO_DIR}
 export CUDA_VISIBLE_DEVICES=0,1,2,3
 export VLLM_WORKER_MULTIPROC_METHOD=spawn
 ulimit -n 65536
-nohup uv run python src/zeroband/infer.py @ configs/inference/${conf} $eval_interval $inf_seq_len ${infer_args} --max_batch_size ${process_bs} --model.name ${model} --parallel.dp 4 --rl.async-level $async_level   --rl.ckpt-path /p/vast1/bartolds/tba-prime/${name}_checkpoints  --rollout-path /p/vast1/bartolds/tba-prime/${name}_rollouts  --max-steps $steps  --sampling.n $sampled_k  --monitor.wandb.name infer_${name} $project > inference_${name}.log 2>&1 &
+nohup uv run --no-sync python src/zeroband/infer.py @ configs/inference/${conf} $eval_interval $inf_seq_len ${infer_args} --max_batch_size ${process_bs} --model.name ${model} --parallel.dp 4 --rl.async-level $async_level   --rl.ckpt-path /p/vast1/bartolds/tba-prime/${name}_checkpoints  --rollout-path /p/vast1/bartolds/tba-prime/${name}_rollouts  --max-steps $steps  --sampling.n $sampled_k  --monitor.wandb.name infer_${name} $project > inference_${name}.log 2>&1 &
 echo "Inference started on Node 1 with 4 GPUs"
 EOF
 
@@ -241,6 +241,6 @@ echo "Starting training worker..."
 cd "${REPO_DIR}"
 export CUDA_VISIBLE_DEVICES=0,1,2,3
 ulimit -n 65536
-uv run torchrun --nproc_per_node=4 src/zeroband/train.py @ configs/training/${conf} $train_seq_len  --optim.batch_size $bs --model.name ${model} --data.num_workers 1  --optim.optim.lr ${LR}  --stop-after-steps $steps  --max-async-level $async_level  --data.path /p/vast1/bartolds/tba-prime/${name}_rollouts  --ckpt.rollout-path /p/vast1/bartolds/tba-prime/${name}_checkpoints ${objective_args}  --monitor.wandb.name ${name} $project > training_${name}.log 2>&1
+uv run --no-sync torchrun --nproc_per_node=4 src/zeroband/train.py @ configs/training/${conf} $train_seq_len  --optim.batch_size $bs --model.name ${model} --data.num_workers 1  --optim.optim.lr ${LR}  --stop-after-steps $steps  --max-async-level $async_level  --data.path /p/vast1/bartolds/tba-prime/${name}_rollouts  --ckpt.rollout-path /p/vast1/bartolds/tba-prime/${name}_checkpoints ${objective_args}  --monitor.wandb.name ${name} $project > training_${name}.log 2>&1
 
 echo "Multi-node setup complete!"
