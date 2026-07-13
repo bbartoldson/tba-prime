@@ -28,6 +28,7 @@ def grpo_loss(
     ema_alpha: float = 0.9,
     max_async_level: int = 10,
     metrics_out: dict | None = None,
+    gen_deltas: Float[Tensor, "batch seq_minus_1"] | None = None,
 ) -> tuple[Tensor, Tensor | None]:
     if isinstance(grpo_loss_config, ClippingConfig):
         return grpo_loss_clip(
@@ -90,6 +91,8 @@ def grpo_loss(
             ema_alpha=ema_alpha,
             max_async_level=max_async_level,
             metrics_out=metrics_out,
+            IS_kl=grpo_loss_config.kl_is,
+            gen_deltas=gen_deltas,
         )
     elif isinstance(grpo_loss_config, IcePopConfig):
         return icepop_loss(logits, input_ids, advantages, original_logprobs, loss_mask, temperature, max_tokens, grpo_loss_config)
@@ -207,6 +210,8 @@ def tba_loss(
     ema_alpha: float = 0.9,
     max_async_level: int = 10,
     metrics_out: dict | None = None,
+    IS_kl: bool | None = None,
+    gen_deltas: Float[Tensor, "batch seq_minus_1"] | None = None,
 ) -> tuple[Tensor, None]:
     """
     DeepSeek Math Loss: https://arxiv.org/abs/2402.03300
@@ -260,7 +265,10 @@ def tba_loss(
         # log T_{n-Δ} = original_logprobs (inference snapshot).
         # Always computed so per-sample approx error is logged for every run,
         # regardless of which formula is used in the loss.
-        coef = ema_alpha / (max_async_level * (1.0 - ema_alpha))
+        # Δ is either the global max_async_level (scalar) or the true
+        # per-rollout lag (per-token tensor, heterogeneous-staleness mode).
+        delta = gen_deltas if gen_deltas is not None else max_async_level
+        coef = ema_alpha / (delta * (1.0 - ema_alpha))
         kl_per_token_approx = coef * (per_token_logps.detach() - original_logprobs) * loss_mask
 
         if metrics_out is not None:
@@ -295,7 +303,7 @@ def tba_loss(
             # surrogate). No beta on either side; the comparison is in
             # log-prob units. Equivalent to (c_0.9/c_alpha) * (surrogate
             # error at this alpha).
-            coef_ref = 0.9 / (max_async_level * (1.0 - 0.9))
+            coef_ref = 0.9 / (delta * (1.0 - 0.9))
             rescale = coef_ref / coef  # c_0.9 / c_alpha
             rescaled_actual = rescale * kl_per_token_actual
             approx_ref = coef_ref * (per_token_logps.detach() - original_logprobs) * loss_mask
@@ -322,17 +330,40 @@ def tba_loss(
             metrics_out["kl_approx/seq_rel_err_of_means_vs_alpha09"] = seq_rel_err_of_means_vs_alpha09.detach()
             metrics_out["kl_approx/seq_rel_err_mae_vs_alpha09"] = seq_rel_err_mae_vs_alpha09.detach()
 
-        if kl_approx == "ema_first_order_use":
-            kl_per_token_for_loss = kl_per_token_approx
-        else:
-            kl_per_token_for_loss = kl_per_token_actual
+            # Δ-stratified diagnostics (heterogeneous-staleness runs): if the
+            # 1/Δ conversion in c_i is the right functional form, the
+            # approx-vs-exact relative error should be flat across strata;
+            # clamp_frac tracks how often the raw log-ratio hits the ±10
+            # truncation per stratum (Δ-invariant by construction).
+            if gen_deltas is not None:
+                raw = (per_token_logps.detach() - original_logprobs) * loss_mask
+                mask_b = loss_mask > 0
+                for label, lo, hi in (("d01_02", 0, 2), ("d03_06", 2, 6), ("d07_20", 6, 20), ("d21_up", 20, float("inf"))):
+                    sel = (gen_deltas > lo) & (gen_deltas <= hi) & mask_b
+                    n_sel = sel.sum().clamp_min(1)
+                    metrics_out[f"kl_approx/{label}/mae"] = ((diff.abs() * sel).sum() / n_sel).detach()
+                    metrics_out[f"kl_approx/{label}/rel_err_of_means"] = (
+                        ((diff * sel).sum() / n_sel).abs() / (((kl_per_token_actual * sel).sum() / n_sel).abs() + 1e-8)
+                    ).detach()
+                    metrics_out[f"kl_approx/{label}/clamp_frac"] = (((raw.abs() > 10) & sel).sum() / n_sel).detach()
+                    metrics_out[f"kl_approx/{label}/token_frac"] = (sel.sum() / mask_b.sum().clamp_min(1)).detach()
 
-        kl_est = torch.clamp(kl_per_token_for_loss, min=-10, max=10).sum(1)
-    advantages += -beta * (kl_est - mean_KL).unsqueeze(1)
-    if IS == True:
-        per_token_loss = -ratio * advantages  # Importance Sampling
-    else:
-        per_token_loss = -per_token_logps * advantages
+        if kl_approx == "ema_first_order_use":
+            # Clamp in RAW log-ratio units before applying the coefficient:
+            # clamping after the multiply would truncate Δ-dependently (small
+            # Δ_i → large c_i → its tokens hit the bound first), biasing
+            # per-rollout-calibrated runs on exactly their highest-weighted
+            # rollouts.
+            raw_diff = (per_token_logps.detach() - original_logprobs) * loss_mask
+            kl_est = (coef * torch.clamp(raw_diff, min=-10, max=10)).sum(1)
+        else:
+            kl_est = torch.clamp(kl_per_token_actual, min=-10, max=10).sum(1)
+    kl_contrib = -beta * (kl_est - mean_KL).unsqueeze(1)
+    pg_adv = advantages
+    effective_IS_kl = IS if IS_kl is None else IS_kl
+    pg_term = (-ratio * pg_adv) if (IS == True) else (-per_token_logps * pg_adv)
+    kl_term = (-ratio * kl_contrib) if (effective_IS_kl == True) else (-per_token_logps * kl_contrib)
+    per_token_loss = pg_term + kl_term
     assert per_token_loss.shape == per_token_logps.shape
     loss = _apply_mask(per_token_loss, loss_mask, max_tokens)
     return loss, None

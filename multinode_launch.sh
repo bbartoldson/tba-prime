@@ -182,6 +182,20 @@ if [ -n "$vllm_logprobs" ] && [ "$vllm_logprobs" = "true" ]; then
     objective_args+=" --use-vllm-logprobs --no-recompute-logprobs"
 fi
 
+# --- Heterogeneous staleness knobs ---
+# kl_approx_delta_source=per_rollout: calibrate the approx-KL coefficient with
+# each sample's true lag Δ_i instead of the global max_async_level.
+if [ -n "$kl_approx_delta_source" ]; then
+    objective_args+=" --grpo.kl-approx-delta-source $kl_approx_delta_source"
+fi
+
+# staleness_offsets=[1,4,10,32]: per-DP-rank checkpoint lags on the inference
+# side, so batches mix rollouts from policies of different ages.
+infer_args=""
+if [ -n "$staleness_offsets" ]; then
+    infer_args+=" --rl.staleness-offsets $staleness_offsets"
+fi
+
 
 
 # Display loaded configuration
@@ -214,7 +228,7 @@ cd ${REPO_DIR}
 export CUDA_VISIBLE_DEVICES=0,1,2,3
 export VLLM_WORKER_MULTIPROC_METHOD=spawn
 ulimit -n 65536
-nohup uv run python src/zeroband/infer.py @ configs/inference/${conf} $eval_interval $inf_seq_len --max_batch_size ${process_bs} --model.name ${model} --parallel.dp 4 --rl.async-level $async_level   --rl.ckpt-path /p/vast1/bartolds/tba-prime/${name}_checkpoints  --rollout-path /p/vast1/bartolds/tba-prime/${name}_rollouts  --max-steps $steps  --sampling.n $sampled_k  --monitor.wandb.name infer_${name} $project > inference_${name}.log 2>&1 &
+nohup uv run python src/zeroband/infer.py @ configs/inference/${conf} $eval_interval $inf_seq_len ${infer_args} --max_batch_size ${process_bs} --model.name ${model} --parallel.dp 4 --rl.async-level $async_level   --rl.ckpt-path /p/vast1/bartolds/tba-prime/${name}_checkpoints  --rollout-path /p/vast1/bartolds/tba-prime/${name}_rollouts  --max-steps $steps  --sampling.n $sampled_k  --monitor.wandb.name infer_${name} $project > inference_${name}.log 2>&1 &
 echo "Inference started on Node 1 with 4 GPUs"
 EOF
 

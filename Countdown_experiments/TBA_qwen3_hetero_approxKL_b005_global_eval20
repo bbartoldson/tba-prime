@@ -1,0 +1,22 @@
+# Heterogeneous staleness + approx-KL with the MISCALIBRATED global
+# coefficient (c uses max_async_level=32 for every rollout, so fresh rollouts
+# are under-regularized ~32x). Comparison arm for per-rollout calibration.
+model="Qwen/Qwen3-4B-Instruct-2507"
+LR=1e-6
+sampled_k=16
+train_k=16
+async_level=32
+steps=720
+beta=0.005
+type=tb
+project=" --monitor.wandb.project fp4_KL "
+conf=COUNTDOWN.toml
+seq_length=4096
+eval_steps=20
+reference_mode=ema
+ema_alpha=0.9
+kl_approx=ema_first_order_use
+kl_centering=false
+vllm_logprobs=true
+staleness_offsets=1,4,10,32
+kl_approx_delta_source=global

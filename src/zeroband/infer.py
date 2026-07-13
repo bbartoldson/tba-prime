@@ -222,7 +222,19 @@ def inference(config: InferenceConfig):
         logger.info(f"Inference step {step} (Checkpoint step: {ckpt_step})")
 
         # Reload model weights from checkpoint if we are too far ahead of the checkpoint step
-        if config.rl and step - ckpt_step > config.rl.async_level:
+        if config.rl and config.rl.staleness_offsets is not None:
+            # Heterogeneous-staleness mode: this rank tracks a fixed lag
+            # behind the inference step, so different DP ranks sample from
+            # policies of different ages.
+            offset = config.rl.staleness_offsets[dp_rank % len(config.rl.staleness_offsets)]
+            target_ckpt_step = max(step - offset, 0)
+            if target_ckpt_step > ckpt_step:
+                logger.info(
+                    f"Staleness offset {offset} (dp_rank {dp_rank}): reloading checkpoint step {target_ckpt_step} at inference step {step}"
+                )
+                ckpt_step = target_ckpt_step
+                llm = reload_checkpoint(llm, config.rl.ckpt_path, ckpt_step)
+        elif config.rl and step - ckpt_step > config.rl.async_level:
             logger.warning(
                 f"Hit async level ({config.rl.async_level}) because inference step {step} is {step - ckpt_step} steps ahead of checkpoint step {ckpt_step}. Trying to reload model weights from {config.rl.ckpt_path}"
             )

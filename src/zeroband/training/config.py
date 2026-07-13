@@ -256,6 +256,21 @@ class GRPOLossConfig(BaseConfig):
         Field(default="off"),
     ]
 
+    kl_approx_delta_source: Annotated[
+        Literal["global", "per_rollout"],
+        Field(
+            default="global",
+            description=(
+                "Δ used in the approx-KL coefficient α/(Δ(1-α)). 'global' "
+                "uses max_async_level for every rollout (original behavior). "
+                "'per_rollout' uses each sample's true lag Δ_i = current "
+                "rollout step - generating checkpoint step (from the parquet "
+                "'step' column), clamped to ≥1 — the calibrated choice when "
+                "rollouts have heterogeneous staleness."
+            ),
+        ),
+    ]
+
     # Whether the per-sample KL term in advantages is centered by the
     # K-group mean kl_avg. When False, we pass mean_KL=0 to tba_loss so
     # advantages += -beta * kl_est directly (no centering).

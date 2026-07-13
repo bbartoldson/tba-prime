@@ -332,6 +332,23 @@ class RLConfig(BaseConfig):
         ),
     ]
 
+    staleness_offsets: Annotated[
+        list[int] | None,
+        Field(
+            default=None,
+            description=(
+                "Heterogeneous-staleness mode: per-DP-rank checkpoint lags. "
+                "Rank r reloads every step to checkpoint (step - offsets[r % len]), "
+                "so a training batch mixes rollouts from policies of different "
+                "ages (like pipeline RL). Overrides the async_level reload rule. "
+                "Put the smallest offset first: dp rank 0 runs online evals, so "
+                "its offset sets how fresh the evaluated policy is. Offsets "
+                "larger than the current step are clamped (base model until "
+                "enough checkpoints exist)."
+            ),
+        ),
+    ]
+
 
 class OnlineEvalConfig(BaseConfig):
     """Configures online evaluation."""

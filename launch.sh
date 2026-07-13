@@ -167,6 +167,15 @@ if [ -n "$vllm_logprobs" ] && [ "$vllm_logprobs" = "true" ]; then
     objective_args+=" --use-vllm-logprobs --no-recompute-logprobs"
 fi
 
+if [ -n "$kl_approx_delta_source" ]; then
+    objective_args+=" --grpo.kl-approx-delta-source $kl_approx_delta_source"
+fi
+
+infer_args=""
+if [ -n "$staleness_offsets" ]; then
+    infer_args+=" --rl.staleness-offsets $staleness_offsets"
+fi
+
 echo "Configuration loaded:"
 echo "================================"
 echo "REPO_DIR=$REPO_DIR"
@@ -189,7 +198,7 @@ echo "Starting inference on GPUs ${INFER_GPUS}..."
 export VLLM_WORKER_MULTIPROC_METHOD=spawn
 ulimit -n 65536
 CUDA_VISIBLE_DEVICES=${INFER_GPUS} nohup uv run python src/zeroband/infer.py @ configs/inference/${conf} \
-    $eval_interval $inf_seq_len \
+    $eval_interval $inf_seq_len ${infer_args} \
     --max_batch_size ${process_bs} \
     --model.name ${model} \
     --parallel.dp ${infer_dp} \

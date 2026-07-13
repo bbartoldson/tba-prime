@@ -26,6 +26,8 @@ class DatasetOutput(TypedDict):
     advantages: Float[torch.Tensor, "seq"]
     loss_mask: Int[torch.Tensor, "seq"]
     logprobs: Float[torch.Tensor, "seq"]
+    # generating policy's checkpoint step, expanded per token (like advantages)
+    gen_steps: Int[torch.Tensor, "seq"]
 
     # sample level
     seq_lens: Int[torch.Tensor, "1"]
@@ -70,6 +72,7 @@ class FakeTokenizedDataset(IterableDataset):
                 "target_lengths": 0,
                 "task_type": "fake_task",
                 "logprobs": logprobs,
+                "gen_steps": torch.zeros(len_, dtype=torch.int32),
                 "temperature": 1.0,
             }
 
@@ -254,6 +257,7 @@ class ParquetDataset(IterableDataset):
                 "output_logprobs",
                 "temperature",
                 "problem_id",
+                "step",  # generating policy's checkpoint step
             ]
 
             scanner = dataset.scanner(columns=required_columns, batch_size=self._pq_read_bs)
@@ -304,6 +308,7 @@ class ParquetDataset(IterableDataset):
                                 "target_lengths": batch["target_lengths"][i].as_py(),
                                 "task_type": batch["task_type"][i].as_py(),
                                 "logprobs": logprobs,
+                                "gen_steps": torch.full((len(ids),), int(batch["step"][i].as_py()), dtype=torch.int32),
                                 "temperature": batch["temperature"][i].as_py(),
                                 "problem_id": batch["problem_id"][i].as_py(),
                             }
@@ -454,6 +459,7 @@ class ParquetDatasetEM(IterableDataset):
                 "input_logprobs",
                 "output_logprobs",
                 "temperature",
+                "step",  # generating policy's checkpoint step
             ]
 
             scanner = dataset.scanner(columns=required_columns, batch_size=self._pq_read_bs)
@@ -511,6 +517,7 @@ class ParquetDatasetEM(IterableDataset):
                                 "target_lengths": batch["target_lengths"][i].as_py(),
                                 "task_type": batch["task_type"][i].as_py(),
                                 "logprobs": logprobs,
+                                "gen_steps": torch.full((len(ids),), int(batch["step"][i].as_py()), dtype=torch.int32),
                                 "temperature": batch["temperature"][i].as_py(),
                             }
 
@@ -595,6 +602,7 @@ class BatchOutput(TypedDict):
     loss_mask: Int[torch.Tensor, "batch seq"]
     position_ids: Int[torch.Tensor, "batch seq"]
     logprobs: Float[torch.Tensor, "batch seq_minus_1"]
+    gen_steps: Int[torch.Tensor, "batch seq"]
 
     # sample level
     seq_lens: Int[torch.Tensor, "sample"]
@@ -629,6 +637,7 @@ def collate_fn(samples: list[DatasetOutput], max_seq_len: int, pad_token_id: int
     if em:
         priv_input_ids = [sample["priv_input_ids"] for sample in samples]
     advantages = [sample["advantages"] for sample in samples]
+    gen_steps = [sample["gen_steps"] for sample in samples]
     rewards = [sample["rewards"] for sample in samples]
     loss_masks = [sample["loss_mask"] for sample in samples]
     if em:
@@ -663,6 +672,7 @@ def collate_fn(samples: list[DatasetOutput], max_seq_len: int, pad_token_id: int
         if em:
             priv_input_ids.append(torch.full((priv_padding_len,), fill_value=pad_token_id, dtype=priv_input_ids[0].dtype))
         advantages.append(torch.zeros(padding_len, dtype=advantages[0].dtype))
+        gen_steps.append(torch.zeros(padding_len, dtype=gen_steps[0].dtype))
         loss_masks.append(torch.zeros(padding_len, dtype=loss_masks[0].dtype).int())
         if em:
             priv_loss_masks.append(torch.zeros(priv_padding_len, dtype=priv_loss_masks[0].dtype).int())
@@ -686,6 +696,7 @@ def collate_fn(samples: list[DatasetOutput], max_seq_len: int, pad_token_id: int
             "input_ids": torch.cat(inputs_ids, dim=0)[:max_seq_len].unsqueeze(0),
             "priv_input_ids": torch.cat(priv_input_ids, dim=0)[:max_seq_len].unsqueeze(0),
             "advantages": torch.cat(advantages, dim=0)[:max_seq_len].unsqueeze(0),
+            "gen_steps": torch.cat(gen_steps, dim=0)[:max_seq_len].unsqueeze(0),
             "loss_mask": torch.cat(loss_masks, dim=0)[:max_seq_len].unsqueeze(0),
             "priv_loss_mask": torch.cat(priv_loss_masks, dim=0)[:max_seq_len].unsqueeze(0),
             "position_ids": torch.cat(position_ids, dim=0)[:max_seq_len].unsqueeze(0),
@@ -705,6 +716,7 @@ def collate_fn(samples: list[DatasetOutput], max_seq_len: int, pad_token_id: int
         # token level
         "input_ids": torch.cat(inputs_ids, dim=0)[:max_seq_len].unsqueeze(0),
         "advantages": torch.cat(advantages, dim=0)[:max_seq_len].unsqueeze(0),
+        "gen_steps": torch.cat(gen_steps, dim=0)[:max_seq_len].unsqueeze(0),
         "loss_mask": torch.cat(loss_masks, dim=0)[:max_seq_len].unsqueeze(0),
         "position_ids": torch.cat(position_ids, dim=0)[:max_seq_len].unsqueeze(0),
         "logprobs": concat_logprobs,
@@ -817,6 +829,7 @@ def merge_batches_padding(batches: list[BatchOutput], em=False) -> BatchOutput:
             "input_ids": torch.cat([b["input_ids"] for b in batches], dim=0),
             "priv_input_ids": torch.cat([b["priv_input_ids"] for b in batches], dim=0),
             "advantages": torch.cat([b["advantages"] for b in batches], dim=0),
+            "gen_steps": torch.cat([b["gen_steps"] for b in batches], dim=0),
             "rewards": torch.cat([b["rewards"] for b in batches], dim=0),
             "loss_mask": torch.cat([b["loss_mask"] for b in batches], dim=0),
             "priv_loss_mask": torch.cat([b["priv_loss_mask"] for b in batches], dim=0),
@@ -837,6 +850,7 @@ def merge_batches_padding(batches: list[BatchOutput], em=False) -> BatchOutput:
         # token level
         "input_ids": torch.cat([b["input_ids"] for b in batches], dim=0),
         "advantages": torch.cat([b["advantages"] for b in batches], dim=0),
+        "gen_steps": torch.cat([b["gen_steps"] for b in batches], dim=0),
         "rewards": torch.cat([b["rewards"] for b in batches], dim=0),
         "loss_mask": torch.cat([b["loss_mask"] for b in batches], dim=0),
         "position_ids": torch.cat([b["position_ids"] for b in batches], dim=0),

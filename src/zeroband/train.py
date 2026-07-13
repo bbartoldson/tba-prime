@@ -261,6 +261,17 @@ def train(config: TrainingConfig):
             ):
                 ema_blend_fsdp(model_reference, model, config.grpo.ema_alpha)
 
+            # Rollout step the trainer is currently consuming; used with the
+            # parquet 'step' column (generating checkpoint) to get per-rollout
+            # lags Δ_i for kl_approx_delta_source == "per_rollout".
+            current_rollout_step = training_progress.step // config.optim.step_per_rollout
+
+            def get_gen_deltas(batch, device="cpu") -> torch.Tensor | None:
+                if config.grpo.kl_approx_delta_source != "per_rollout":
+                    return None
+                gen = batch["gen_steps"][:, 1:].to(device)
+                return (current_rollout_step - gen).clamp(min=1).float()
+
             if config.recompute_logprobs:
                 og_infer_step = training_progress.step // config.optim.step_per_rollout - config.max_async_level
                 infer_step = max(og_infer_step, 0)
@@ -332,6 +343,12 @@ def train(config: TrainingConfig):
                             assert batch["logprobs"] is not None, (
                                 "use_vllm_logprobs requires the rollout parquets to contain logprobs (sampling.logprobs must not be None)"
                             )
+                            # vLLM returns logprobs of the post-processing
+                            # sampling distribution; they only equal raw model
+                            # logprobs at temperature 1.0 with no truncation.
+                            assert batch["temperature"] == 1.0, (
+                                f"use_vllm_logprobs requires sampling temperature 1.0, got {batch['temperature']}"
+                            )
                             model_for_logprob = None
                         else:
                             model_for_logprob = model_for_logprob_only if config.recompute_logprobs else model
@@ -398,14 +415,22 @@ def train(config: TrainingConfig):
                             # where log T_n = train_logprobs (live train at start of
                             # rollout) and log T_{n-Δ} = logprobs (inference snapshot).
                             masked_inference_logprobs = batch["loss_mask"][:, 1:] * batch["logprobs"]
+                            gen_deltas_pre = get_gen_deltas(batch)
+                            delta_pre = gen_deltas_pre if gen_deltas_pre is not None else config.max_async_level
                             coef = config.grpo.ema_alpha / (
-                                config.max_async_level * (1.0 - config.grpo.ema_alpha)
+                                delta_pre * (1.0 - config.grpo.ema_alpha)
                             )
-                            kl_est = coef * (masked_per_token_logps - masked_inference_logprobs)
+                            diff_pre = masked_per_token_logps - masked_inference_logprobs
+                            kl_est = coef * diff_pre
+                            # Clamp in raw log-ratio units (Δ-invariant truncation);
+                            # clamping after the coef would bind first on small-Δ
+                            # (large-coef) rollouts.
+                            kl_est_clamped = coef * torch.clamp(diff_pre, min=-10, max=10)
                         else:
                             kl_est = masked_per_token_logps - masked_ref_logprobs
+                            kl_est_clamped = torch.clamp(kl_est, min=-10, max=10)
                         kl_noClamp_abs_metric = kl_noClamp_abs_metric + kl_est.detach().abs().sum(1).sum()
-                        kl_est = torch.clamp(kl_est, min=-10, max=10)
+                        kl_est = kl_est_clamped
                         kl_abs_metric = kl_abs_metric + kl_est.detach().abs().sum(1).sum()
                         kl_est = kl_est.sum(1)
 
@@ -623,6 +648,7 @@ def train(config: TrainingConfig):
                     ema_alpha=config.grpo.ema_alpha,
                     max_async_level=config.max_async_level,
                     metrics_out=kl_approx_metrics,
+                    gen_deltas=get_gen_deltas(batch, device="cuda"),
                 )
                 for _name, _val in kl_approx_metrics.items():
                     metric_averager.update(_name, _val)

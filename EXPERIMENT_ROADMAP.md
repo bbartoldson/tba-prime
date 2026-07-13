@@ -98,9 +98,42 @@ Env-file vars: `rollout_quant`, `fake_quant`, `four_over_six`,
 Smoke first: `TBA_qwen3_fp4sym_smoke` (60 steps, all paths on).
 
 Known gaps: activation quantization not emulated (weight-only, W4A16-
-like); per-rollout Δ_i calibration (heterogeneous staleness) still
-uses the global `max_async_level` — per-sample Δ stamping is future
-work; exact-KL reference stays BF16 by design.
+like); exact-KL reference stays BF16 by design.
+
+## 7. Heterogeneous staleness + per-rollout calibration (branch `fp4_KL`)
+
+The calibration claim only bites when rollouts have MIXED ages Δ_i
+(homogeneous Δ lets a constant β absorb c). Mechanism: inference
+`--rl.staleness-offsets 1,4,10,32` gives each DP rank a fixed lag
+(reload every step to `step − offset`; each rank self-throttles via
+its reload poll; ckpt retention = max_async_level+1 must be ≥ max
+offset, so set `async_level=32`). Trainer reads the parquet `step`
+column (generating ckpt, already recorded) into per-token
+`gen_steps`, and `--grpo.kl-approx-delta-source per_rollout` uses
+c_i = α/(Δ_i(1−α)) per token — every rollout then estimates the same
+β·KL(T_n‖E_n). `global` mode = miscalibrated comparison arm.
+
+A fable-subagent adversarial review (2026-07-13) shaped the design:
+- vLLM logprob anchor is REQUIRED for hetero (the recompute path
+  anchors all ranks to one snapshot — incoherent); the homogeneous
+  reference must use the same anchor + offsets mechanism
+  (`homog10_approxKL_b005_vllmLP`).
+- Dose confound: per-rollout at β=0.005 has ~3.4× the mean raw-weight
+  of uniform-at-Δ32; the per-rollout arm must beat the BEST uniform
+  dose → sweep w ∈ {0.0045, 0.015, 0.045} (`global_w*` configs).
+- β=0 hetero control (`hetero_b0`) — "is there a problem at all?"
+- Clamp fixed to raw log-ratio units (±10 before coef) — post-coef
+  clamping truncated small-Δ rollouts first (Δ-dependent bias).
+- Per-Δ stratified telemetry (kl_approx/d01_02..d21_up: mae,
+  rel_err_of_means, clamp_frac) — validates the 1/Δ form in-run:
+  rel. error should be flat across strata only under c_i ∝ 1/Δ.
+- Still open (deliberate deferrals): offset↔rank rotation (backward
+  reloads need care), common warm-start branching (~step 64) before
+  arms, ≥3 paired seeds on the two decisive arms, per-Δ pg-term
+  diagnostics (ratio saturation), FP4×hetero factorial (run FP4 as a
+  separate homogeneous mini-study first; also try QDQ'd recompute
+  anchors to isolate quantization from kernel numerics).
+- Temperature must be 1.0 with vllm_logprobs (asserted in train.py).
 
 ## Operational notes
 
