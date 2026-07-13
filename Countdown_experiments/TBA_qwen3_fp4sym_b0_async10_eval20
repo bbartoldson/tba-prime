@@ -1,0 +1,19 @@
+# Act 2a: symmetric FP4, Delta=10, KL off. Tests whether staleness x
+# quantization compound into degradation at moderate async.
+model="Qwen/Qwen3-4B-Instruct-2507"
+LR=1e-6
+sampled_k=16
+train_k=16
+async_level=10
+steps=720
+beta=0
+type=tb
+project=" --monitor.wandb.project fp4_KL "
+conf=COUNTDOWN.toml
+seq_length=4096
+eval_steps=20
+reference_mode=ema
+ema_alpha=0.9
+kl_centering=false
+rollout_quant=nvfp4
+fake_quant=nvfp4

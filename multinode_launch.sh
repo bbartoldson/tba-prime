@@ -150,6 +150,38 @@ if [ -n "$kl_centering" ] && [ "$kl_centering" = "false" ]; then
     objective_args+=" --no-grpo.kl-centering"
 fi
 
+if [ -n "$kl_is" ]; then
+    objective_args+=" --grpo.off-policy.kl-is $kl_is"
+fi
+
+# --- FP4 emulation knobs (Phase A: quantized-rollout RL) ---
+# rollout_quant=nvfp4: QDQ eligible weights in save_ckpt_for_rollout, so the
+# sampler serves NVFP4-grid weights on BF16 kernels.
+if [ -n "$rollout_quant" ]; then
+    objective_args+=" --ckpt.rollout-quant $rollout_quant"
+fi
+
+# fake_quant=nvfp4: symmetric arm — trainer forward QDQs its linear weights
+# (STE) so trainer and sampler share the quantization grid bit-exactly.
+if [ -n "$fake_quant" ]; then
+    objective_args+=" --fake-quant-forward $fake_quant"
+fi
+
+if [ -n "$four_over_six" ] && [ "$four_over_six" = "true" ]; then
+    objective_args+=" --ckpt.rollout-quant-four-over-six"
+fi
+
+if [ -n "$quant_skip_last_frac" ]; then
+    objective_args+=" --ckpt.rollout-quant-skip-last-frac $quant_skip_last_frac"
+fi
+
+# vllm_logprobs=true: use the sampler's own returned logprobs as the IS/KL
+# anchor (preserves sampler numerics incl. quantization error) instead of
+# recomputing them with trainer numerics.
+if [ -n "$vllm_logprobs" ] && [ "$vllm_logprobs" = "true" ]; then
+    objective_args+=" --use-vllm-logprobs --no-recompute-logprobs"
+fi
+
 
 
 # Display loaded configuration

@@ -61,6 +61,18 @@ class CkptConfig(BaseConfig):
 
     rollout_path: Annotated[str | None, Field(default=None)]
     clean_rollout_path: Annotated[bool, Field(default=False)]
+    rollout_quant: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description="If set (currently only 'nvfp4'), QDQ eligible weights to the NVFP4 grid in save_ckpt_for_rollout.",
+        ),
+    ]
+    rollout_quant_four_over_six: Annotated[bool, Field(default=False)]
+    rollout_quant_skip_last_frac: Annotated[
+        float,
+        Field(default=0.0, description="Fraction of final transformer layers kept in BF16 (selective precision)."),
+    ]
     async_save: Annotated[
         bool,
         Field(
@@ -139,6 +151,18 @@ class TBConfig(BaseGRPOVariantConfig):
                 "inference-snapshot recompute via model_for_logprob_only). "
                 "Combined with kl_mean_source, this lets us pick all-train, "
                 "all-inference, or the asymmetric mean-only-inference variant."
+            ),
+        ),
+    ]
+    kl_is: Annotated[
+        bool | None,
+        Field(
+            default=None,
+            description=(
+                "Apply importance sampling to the KL contribution in the loss. "
+                "None (default) inherits from importance_sample for back-compat. "
+                "False = use score-function trick for the KL part only, while "
+                "keeping IS=True for the PG advantage."
             ),
         ),
     ]
@@ -335,6 +359,40 @@ class Config(BaseSettings):
     normalize_batch_to_token_count: Annotated[bool, Field(default=True)]
 
     recompute_logprobs: Annotated[bool, Field(default=True)]
+
+    use_vllm_logprobs: Annotated[
+        bool,
+        Field(
+            default=False,
+            description=(
+                "Use the vLLM-returned logprobs from the rollout parquets as "
+                "batch['logprobs'] (the IS-ratio anchor and the log T_{n-Δ} "
+                "term of the approx KL) instead of recomputing them with "
+                "trainer numerics. This preserves the sampler's numerics "
+                "(e.g. quantization error) in the mismatch terms. Requires "
+                "recompute_logprobs=False."
+            ),
+        ),
+    ]
+
+    fake_quant_forward: Annotated[
+        str | None,
+        Field(
+            default=None,
+            description=(
+                "If set (currently only 'nvfp4'), wrap eligible trainer linear "
+                "weights with QDQ + straight-through estimator so the trainer "
+                "forward runs on the same quantization grid as a QDQ'd "
+                "sampler (symmetric fake-quant arm)."
+            ),
+        ),
+    ]
+
+    @model_validator(mode="after")
+    def check_vllm_logprobs(self):
+        if self.use_vllm_logprobs:
+            assert not self.recompute_logprobs, "use_vllm_logprobs requires recompute_logprobs=False"
+        return self
 
     @model_validator(mode="after")
     def check_liger(self):

@@ -23,6 +23,7 @@ from zeroband.training.config import TBConfig
 from zeroband.training.data import BatchOutput, DatasetOutput, get_dataloader, packed_batch
 from zeroband.training.logger import setup_logger
 from zeroband.training.loss import entropy_loss, grpo_loss, kl_penalty, selective_log_softmax
+from zeroband.training.qdq import apply_fake_quant_forward
 from zeroband.training.utils import (
     MetricsAverager,
     OffloadedTensor,
@@ -130,6 +131,19 @@ def train(config: TrainingConfig):
     if config.train.ac_ckpt:
         num = 1 if isinstance(config.train.ac_ckpt, bool) else config.train.ac_ckpt
         apply_ac_ckpt(model, num)
+
+    if config.fake_quant_forward is not None:
+        # Symmetric fake-quant arm: the trainer forward runs on the same QDQ
+        # grid as the (QDQ'd) sampler. The reference / logprob-snapshot models
+        # are left in BF16 on purpose: the EMA reference is defined over the
+        # BF16 trainer trajectory.
+        n_patched = apply_fake_quant_forward(
+            model,
+            config.fake_quant_forward,
+            four_over_six=config.ckpt.rollout_quant_four_over_six,
+            skip_last_frac=config.ckpt.rollout_quant_skip_last_frac,
+        )
+        logger.info(f"fake_quant_forward={config.fake_quant_forward}: patched {n_patched} linear modules")
 
     apply_fsdp(model, config.train.reshard_after_forward)
 
@@ -302,7 +316,7 @@ def train(config: TrainingConfig):
                     )
 
                     # Only compute logprobs if not using vllm logprobs or if the batch doesn't have them
-                    if config.recompute_logprobs or isinstance(config.grpo.off_policy, TBConfig):
+                    if config.use_vllm_logprobs or config.recompute_logprobs or isinstance(config.grpo.off_policy, TBConfig):
                         logger.debug(f"log prob grad_acc_step {grad_acc_step} / {num_grad_acc_steps}, batch: {batch['input_ids'].shape}")
                         input_ids = batch["input_ids"].to("cuda")
                         # Ensure input_ids are long type
@@ -310,10 +324,20 @@ def train(config: TrainingConfig):
                             logger.warning(f"Converting input_ids from {input_ids.dtype} to torch.long")
                             input_ids = input_ids.long()
 
-                        model_for_logprob = model_for_logprob_only if config.recompute_logprobs else model
-                        per_token_logps = get_logprobs(model_for_logprob, input_ids, batch["position_ids"], batch["temperature"])
+                        if config.use_vllm_logprobs:
+                            # Keep the parquet logprobs produced by the sampler
+                            # itself: they carry the true sampler numerics
+                            # (staleness AND any rollout quantization error),
+                            # which recomputing with trainer numerics erases.
+                            assert batch["logprobs"] is not None, (
+                                "use_vllm_logprobs requires the rollout parquets to contain logprobs (sampling.logprobs must not be None)"
+                            )
+                            model_for_logprob = None
+                        else:
+                            model_for_logprob = model_for_logprob_only if config.recompute_logprobs else model
+                            per_token_logps = get_logprobs(model_for_logprob, input_ids, batch["position_ids"], batch["temperature"])
 
-                        batch["logprobs"] = per_token_logps.to("cpu")
+                            batch["logprobs"] = per_token_logps.to("cpu")
 
                         # For TBA we center the per-sample kl_est (computed against the
                         # live training policy inside tba_loss) using a kl_est mean
@@ -785,11 +809,16 @@ def train(config: TrainingConfig):
                 path = Path(config.ckpt.rollout_path) / f"step_{rollout_step}"
                 previous_ckpt_rollout.append(path)
                 t0 = time.time()
-                safetensor_path = save_ckpt_for_rollout(model, tokenizer, path, async_save=config.ckpt.async_save)
+                rollout_quant_kwargs = dict(
+                    rollout_quant=config.ckpt.rollout_quant,
+                    rollout_quant_four_over_six=config.ckpt.rollout_quant_four_over_six,
+                    rollout_quant_skip_last_frac=config.ckpt.rollout_quant_skip_last_frac,
+                )
+                safetensor_path = save_ckpt_for_rollout(model, tokenizer, path, async_save=config.ckpt.async_save, **rollout_quant_kwargs)
                 if training_progress.step in [200, 250, 300, 350, 400, 450, 500]:
                     final_path = str(path).replace("tba-prime", "tba-prime/final")
                     final_path = final_path.replace("_checkpoints", "")
-                    _ = save_ckpt_for_rollout(model, tokenizer, Path(final_path), async_save=config.ckpt.async_save)
+                    _ = save_ckpt_for_rollout(model, tokenizer, Path(final_path), async_save=config.ckpt.async_save, **rollout_quant_kwargs)
                 time_rollout_ckpt = time.time() - t0
 
                 time_shardcast = time.time()

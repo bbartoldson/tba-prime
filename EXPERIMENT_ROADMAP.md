@@ -65,6 +65,43 @@ Parallel track: repeat the diverse-timestep variant under OAPL and the
 Kimi-K2 sequence-level objectives, to see whether the EMA-reference
 benefit transfers across off-policy correction schemes.
 
+## 6. FP4 phase (branch `fp4_KL`): KL reg vs quantized-rollout mismatch
+
+Motivated by the humans& "4-bitter Lesson" blog (July 2026): async RL
+policy mismatch = staleness + quantization error, and their published
+NVFP4 recipe uses **no KL regularization** (miles defaults `kl_coef=0`).
+Hypothesis: the free EMA-KL surrogate with Δ-normalized β (constant
+β·c) mitigates the collapse they fix with kernel engineering
+(bit-exact 4/6 contracts), and the two approaches compose.
+
+Story: (1) symmetric fake-quant FP4 trains stably on-policy; (2) it
+degrades as Δ grows (2×2 controls: {BF16, FP4} × {Δ≈1, Δ large});
+(3) approx-KL anchored on the sampler's own vLLM logprobs rescues it.
+Discovery arm (asymmetric: BF16 trainer, FP4 sampler): the penalty
+contains the quantization gap → soft-QAT effect, measurable as a
+shrinking log T_n − log T^Q_n telemetry.
+
+New knobs (all emulation, H100-friendly — QDQ reproduces NVFP4
+numerics on BF16 kernels; see `src/zeroband/training/qdq.py`):
+
+- `--ckpt.rollout-quant nvfp4` (+ `-four-over-six`,
+  `-skip-last-frac`): QDQ weights in `save_ckpt_for_rollout`.
+- `--fake-quant-forward nvfp4`: symmetric arm; trainer linears run
+  QDQ+STE forwards (bit-exact with the sampler QDQ by construction).
+- `--use-vllm-logprobs --no-recompute-logprobs`: anchor IS ratio and
+  approx-KL on the sampler-returned parquet logprobs (preserves
+  quantization error in the mismatch terms; recomputing erases it).
+
+Env-file vars: `rollout_quant`, `fake_quant`, `four_over_six`,
+`quant_skip_last_frac`, `vllm_logprobs`. Configs:
+`Countdown_experiments/TBA_qwen3_fp4*` (wandb project `fp4_KL`).
+Smoke first: `TBA_qwen3_fp4sym_smoke` (60 steps, all paths on).
+
+Known gaps: activation quantization not emulated (weight-only, W4A16-
+like); per-rollout Δ_i calibration (heterogeneous staleness) still
+uses the global `max_async_level` — per-sample Δ stamping is future
+work; exact-KL reference stays BF16 by design.
+
 ## Operational notes
 
 - Project: wandb `ema_KL` (https://wandb.ai/bartoldson/ema_KL).

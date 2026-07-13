@@ -1,0 +1,22 @@
+# Act 3b: rescue at Delta=32 with Delta-normalized beta. c = a/(D(1-a)) =
+# 0.9/(32*0.1) = 0.28125; beta = 0.0045/c = 0.016 keeps beta*c = 0.0045
+# matching the Delta=10 rescue run (constant effective KL strength).
+model="Qwen/Qwen3-4B-Instruct-2507"
+LR=1e-6
+sampled_k=16
+train_k=16
+async_level=32
+steps=720
+beta=0.016
+type=tb
+project=" --monitor.wandb.project fp4_KL "
+conf=COUNTDOWN.toml
+seq_length=4096
+eval_steps=20
+reference_mode=ema
+ema_alpha=0.9
+kl_approx=ema_first_order_use
+kl_centering=false
+rollout_quant=nvfp4
+fake_quant=nvfp4
+vllm_logprobs=true

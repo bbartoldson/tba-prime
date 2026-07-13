@@ -146,6 +146,27 @@ if [ -n "$kl_centering" ] && [ "$kl_centering" = "false" ]; then
     objective_args+=" --no-grpo.kl-centering"
 fi
 
+# --- FP4 emulation knobs (Phase A: quantized-rollout RL) ---
+if [ -n "$rollout_quant" ]; then
+    objective_args+=" --ckpt.rollout-quant $rollout_quant"
+fi
+
+if [ -n "$fake_quant" ]; then
+    objective_args+=" --fake-quant-forward $fake_quant"
+fi
+
+if [ -n "$four_over_six" ] && [ "$four_over_six" = "true" ]; then
+    objective_args+=" --ckpt.rollout-quant-four-over-six"
+fi
+
+if [ -n "$quant_skip_last_frac" ]; then
+    objective_args+=" --ckpt.rollout-quant-skip-last-frac $quant_skip_last_frac"
+fi
+
+if [ -n "$vllm_logprobs" ] && [ "$vllm_logprobs" = "true" ]; then
+    objective_args+=" --use-vllm-logprobs --no-recompute-logprobs"
+fi
+
 echo "Configuration loaded:"
 echo "================================"
 echo "REPO_DIR=$REPO_DIR"

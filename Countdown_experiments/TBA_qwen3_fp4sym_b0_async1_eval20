@@ -1,0 +1,20 @@
+# Act 1: symmetric FP4 (QDQ sampler + fake-quant trainer forward), near
+# on-policy (Delta<=1), KL off (beta=0). Expected: stable training.
+# Logprob anchor: default recompute (quant-blind IS) = naive practice.
+model="Qwen/Qwen3-4B-Instruct-2507"
+LR=1e-6
+sampled_k=16
+train_k=16
+async_level=1
+steps=720
+beta=0
+type=tb
+project=" --monitor.wandb.project fp4_KL "
+conf=COUNTDOWN.toml
+seq_length=4096
+eval_steps=20
+reference_mode=ema
+ema_alpha=0.9
+kl_centering=false
+rollout_quant=nvfp4
+fake_quant=nvfp4

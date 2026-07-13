@@ -10,6 +10,7 @@ from torch.distributed.checkpoint.state_dict import _get_fqns as get_fqns
 from torch.distributed.tensor import DTensor
 from transformers import AutoTokenizer
 
+from zeroband.training.qdq import nvfp4_qdq, should_quantize_key
 from zeroband.training.world_info import get_world_info
 from zeroband.utils.logger import get_logger
 from zeroband.utils.models import ModelType
@@ -91,10 +92,21 @@ async_ckpt_job = None
 
 
 def save_ckpt_for_rollout(
-    model: ModelType, tokenizer: AutoTokenizer, path: Path, dtype: torch.dtype = torch.bfloat16, async_save: bool = False
+    model: ModelType,
+    tokenizer: AutoTokenizer,
+    path: Path,
+    dtype: torch.dtype = torch.bfloat16,
+    async_save: bool = False,
+    rollout_quant: str | None = None,
+    rollout_quant_four_over_six: bool = False,
+    rollout_quant_skip_last_frac: float = 0.0,
 ) -> Path:
     """
     Save the checkpoint for rollout as one unified safetensors file.
+
+    If `rollout_quant` is set (currently only "nvfp4"), eligible weight
+    matrices are quantize-dequantized to the NVFP4 grid before saving, so the
+    sampler runs BF16 kernels on weights carrying FP4 quantization error.
 
     Return:
         Path to the saved checkpoint safetensor
@@ -122,6 +134,11 @@ def save_ckpt_for_rollout(
             key: set[str] = get_fqns(model, key)
             assert len(key) == 1
             key = next(iter(key))
+            if rollout_quant is not None and should_quantize_key(
+                key, value.ndim, num_layers=model.config.num_hidden_layers, skip_last_frac=rollout_quant_skip_last_frac
+            ):
+                assert rollout_quant == "nvfp4", f"unknown rollout_quant {rollout_quant}"
+                value = nvfp4_qdq(value, four_over_six=rollout_quant_four_over_six)
             cpu_state[key] = value.to("cpu", non_blocking=False)
             # TODO(SAMI) keeping blocking here to avoid race condition, should be faster to make it non blocking tho
 
