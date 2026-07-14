@@ -17,3 +17,4 @@ ema_alpha=0.9
 kl_centering=false
 rollout_quant=nvfp4
 fake_quant=nvfp4
+vllm_logprobs=true
