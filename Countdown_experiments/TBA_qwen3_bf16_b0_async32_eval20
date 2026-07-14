@@ -1,5 +1,8 @@
 # Control: BF16 everywhere, Delta=32, KL off. Staleness-alone arm of the
 # 2x2 -- isolates quantization's contribution to any async-32 collapse.
+# vllm_logprobs also keeps the anchor source consistent with the other arms
+# AND avoids the recompute path's CPU snapshot retention (async_level+1
+# snapshots ~ 264GB at async 32 -> OOM-killed job 276520 on 2026-07-13).
 model="Qwen/Qwen3-4B-Instruct-2507"
 LR=1e-6
 sampled_k=16
@@ -15,3 +18,4 @@ eval_steps=20
 reference_mode=ema
 ema_alpha=0.9
 kl_centering=false
+vllm_logprobs=true
