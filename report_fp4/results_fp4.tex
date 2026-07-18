@@ -10,7 +10,7 @@
 \title{Phase-A Results: The Free EMA-KL Surrogate Prevents Staleness Collapse,\\
 and Its Theory Picks the Right Dose}
 \author{Brian Bartoldson (experiments run and report drafted with Claude)}
-\date{July 17, 2026}
+\date{July 17, 2026 (evening)}
 
 \newcommand{\E}{\mathbb{E}}
 \newcommand{\KL}{\mathrm{KL}}
@@ -137,8 +137,11 @@ $\Delta{=}10$ reference through the full new machinery (offsets mechanism,
 vLLM anchor, raw-units clamp) peaks $0.829$ / final $0.828$ --- inside the
 historical no-centering band ($0.827$--$0.831$). NVFP4-emulated symmetric
 training (QDQ on trainer forwards and sampler checkpoints, bit-exact) is
-stable at 60-step smoke scale; checkpoints verified on-grid. FP4
-collapse/rescue arms are the next queue batch.
+stable at 60-step smoke scale; checkpoints verified on-grid. The six FP4
+arms are submitted ($\beta{=}0$ ladder at async $\{1,10,32\}$, rescue arms at
+$\beta c = 0.0045$ for $\Delta{=}10$ and $32$, and the asymmetric arm); the
+async-1 arm is running cleanly, with first evals $0.600$ at step 0 and
+$0.615$ at step 20 (partial --- two points only).
 
 \section{Next steps}
 
