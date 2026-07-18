@@ -18,17 +18,19 @@
 \providecommand\HyField@AuxAddToCoFields[2]{}
 \@writefile{toc}{\contentsline {section}{\tocsection {}{1}{Setup}}{1}{section.1}\protected@file@percent }
 \@writefile{toc}{\contentsline {paragraph}{\tocparagraph {}{}{Heterogeneous staleness.}}{1}{section*.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{\tocparagraph {}{}{Per-rollout calibration.}}{1}{section*.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{\tocparagraph {}{}{Anchors and calibration.}}{1}{section*.2}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\tocsection {}{2}{Results}}{1}{section.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{\tocparagraph {}{}{Finding 1: the reference reproduces the historical baseline.}}{1}{section*.3}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Countdown eval accuracy. Blue: homogeneous $\Delta {=}10$ reference (run through the same offsets mechanism and anchor as the heterogeneous arms); aqua: heterogeneous $\Delta _i \in \{1,4,10,32\}$ with per-rollout $c_i$; yellow: heterogeneous with the KL penalty off ($\beta {=}0$; partial run, resubmitted after an unrelated time-limit stop). Runs end where their 24\,h allocations ended (steps 688 and 561).}}{2}{figure.1}\protected@file@percent }
-\newlabel{fig:eval}{{1}{2}{Countdown eval accuracy. Blue: homogeneous $\Delta {=}10$ reference (run through the same offsets mechanism and anchor as the heterogeneous arms); aqua: heterogeneous $\Delta _i \in \{1,4,10,32\}$ with per-rollout $c_i$; yellow: heterogeneous with the KL penalty off ($\beta {=}0$; partial run, resubmitted after an unrelated time-limit stop). Runs end where their 24\,h allocations ended (steps 688 and 561)}{figure.1}{}}
-\@writefile{toc}{\contentsline {paragraph}{\tocparagraph {}{}{Finding 2: calibrated heterogeneity matches homogeneity.}}{2}{section*.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{\tocparagraph {}{}{Finding 3: surrogate quality is strongly $\Delta $-dependent --- and training doesn't care.}}{2}{section*.5}\protected@file@percent }
-\@writefile{toc}{\contentsline {paragraph}{\tocparagraph {}{}{Finding 4: NVFP4-emulated symmetric training is stable (smoke scale).}}{2}{section*.6}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Relative error of the first-order surrogate against the exact EMA-KL (forwarded reference model), stratified by each token's true lag $\Delta _i$, over the decisive run (window-median smoothed; log scale). Sequential shading encodes the $\Delta $ ordering.}}{3}{figure.2}\protected@file@percent }
-\newlabel{fig:strata}{{2}{3}{Relative error of the first-order surrogate against the exact EMA-KL (forwarded reference model), stratified by each token's true lag $\Delta _i$, over the decisive run (window-median smoothed; log scale). Sequential shading encodes the $\Delta $ ordering}{figure.2}{}}
-\@writefile{toc}{\contentsline {section}{\tocsection {}{3}{Status and next steps}}{3}{section.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{\tocparagraph {}{}{Finding 1: staleness alone collapses training; the free surrogate prevents it.}}{1}{section*.3}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Collapse without the KL penalty; stability with it. Yellow (heterogeneous) and violet (homogeneous $\Delta {=}32$) are $\beta {=}0$: both collapse (steps ${\sim }230$ and ${\sim }170$) and never recover. Aqua (uniform dose $w{=}0.0045$) trains through the same window untouched; blue is the homogeneous $\Delta {=}10$ reference.}}{2}{figure.1}\protected@file@percent }
+\newlabel{fig:collapse}{{1}{2}{Collapse without the KL penalty; stability with it. Yellow (heterogeneous) and violet (homogeneous $\Delta {=}32$) are $\beta {=}0$: both collapse (steps ${\sim }230$ and ${\sim }170$) and never recover. Aqua (uniform dose $w{=}0.0045$) trains through the same window untouched; blue is the homogeneous $\Delta {=}10$ reference}{figure.1}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces All stable arms. Calibrated per-rollout $c_i$ (aqua) vs.\ the two uniform doses (yellow $w{=}0.0045$, violet $w{=}0.015$) under the same $\Delta _i \in \{1,4,10,32\}$ mixture; blue is the homogeneous reference.}}{2}{figure.2}\protected@file@percent }
+\newlabel{fig:dose}{{2}{2}{All stable arms. Calibrated per-rollout $c_i$ (aqua) vs.\ the two uniform doses (yellow $w{=}0.0045$, violet $w{=}0.015$) under the same $\Delta _i \in \{1,4,10,32\}$ mixture; blue is the homogeneous reference}{figure.2}{}}
+\@writefile{toc}{\contentsline {paragraph}{\tocparagraph {}{}{Finding 2: calibration matches the best swept dose --- without the sweep.}}{2}{section*.4}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Relative error of the surrogate vs.\ exact EMA-KL by lag stratum (calibrated run; window-median smoothed; log scale).}}{3}{figure.3}\protected@file@percent }
+\newlabel{fig:strata}{{3}{3}{Relative error of the surrogate vs.\ exact EMA-KL by lag stratum (calibrated run; window-median smoothed; log scale)}{figure.3}{}}
+\@writefile{toc}{\contentsline {paragraph}{\tocparagraph {}{}{Finding 3: the surrogate's error is strongly $\Delta $-dependent --- and training doesn't care.}}{3}{section*.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{\tocparagraph {}{}{Finding 4: mechanism and baseline controls.}}{3}{section*.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\tocsection {}{3}{Next steps}}{3}{section.3}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\tocsection {Appendix}{A}{Configurations}}{3}{appendix.A}\protected@file@percent }
 \newlabel{app:configs}{{A}{3}{Configurations}{appendix.A}{}}
 \newlabel{tocindent-1}{0pt}

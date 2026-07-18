@@ -333,3 +333,175 @@ No change: four pending.
 ## 23:34 — Loop iteration 72
 
 No change: four pending.
+
+## 00:33 — Loop iteration 73
+
+No change: four pending. (Interim report results_fp4.pdf built, committed, pushed at ~23:45; delivered to Brian.)
+
+## 01:33 — Loop iteration 74
+
+No change: four pending.
+
+## 02:33 — Loop iteration 75
+
+No change: four pending.
+
+## 03:33 — Loop iteration 76
+
+No change: four pending.
+
+## 04:33 — Loop iteration 77
+
+No change: four pending.
+
+## 05:33 — Loop iteration 78
+
+No change: four pending.
+
+## 06:33 — Loop iteration 79
+
+No change: four pending (~54h queued for the oldest).
+
+## 07:33 — Loop iteration 80
+
+No change: four pending.
+
+## 08:33 — Loop iteration 81
+
+No change: four pending.
+
+## 09:34 — Loop iteration 82
+
+No change: four pending (ranks ~127–130; queue deepened). Report confirmed current — no new data to plot.
+
+## ~10:20 Jul 16 — Migrated four pending arms to ml4ss bank (Brian-approved after test)
+
+ml4ss verified: 1-node AND 2-node probes ran to completion; association unrestricted. Cancelled bridges jobs 278069/278088/278089/278160 (never started, no data loss) and resubmitted as 280129 (bf16_b0), 280130 (hetero_b0), 280131 (w015), 280132 (w0045) — priority 187,116 vs ~168k on bridges; 280129 already front-of-line (Resources). Expect starts as nodes free.
+
+## 10:33 — Loop iteration 83
+
+Post-migration state: all four arms on ml4ss at 187k priority; bf16_b0 front-of-line (Resources), others right behind. Waiting on node availability.
+
+## 11:33 — Loop iteration 84
+
+No change: four ml4ss arms at front of queue, waiting on 2-node openings.
+
+## 12:33 — Loop iteration 85: bf16_b0 RUNNING (ml4ss migration worked)
+
+280129 started ~11:39 on matrix[11,40]; step 21+, zero errors, trainer RAM 40/503GB — OOM fix confirmed. hetero_b0 (280130) now front-of-line. Monitor armed.
+
+## 13:33 — Loop iteration 86
+
+bf16_b0 at ~2h (step ~60), clean; three arms still queued at front.
+
+## 14:33 — Loop iteration 87
+
+bf16_b0 ~3h in, clean; three queued.
+
+## 15:33 — Loop iteration 88
+
+bf16_b0 step ~105 (reward 0.756 at 100), clean; three queued.
+
+## 16:33 — Loop iteration 89
+
+bf16_b0 ~5h (step ~140), clean; three queued.
+
+## 17:33 — Loop iteration 90: ALL FOUR ml4ss ARMS RUNNING
+
+bf16_b0 ~step 160; hetero_b0, w015, w0045 all started ~17:03, step 8 each, zero errors, offsets cycling. 8/12 nodes. Full dose-sweep + controls now in flight — the calibration comparison completes when these finish (~17:00 tomorrow). Consolidated monitor armed.
+
+## 18:35 — COLLAPSE on bf16_b0 (staleness-only control)
+
+BF16, homogeneous Δ=32, β=0: peak reward 0.756 @ step 100, slow decline to 0.684 @ 160, cliff to 0.188 @ 180 and 0.148 @ 200. First observed collapse — staleness alone (no quantization) breaks training at high async without KL. Run left up: the trajectory is the data. Pushed to Brian. The KL arms (dose sweep, calibrated) now decide the rescue half.
+
+## 18:34 — Loop iteration 91
+
+All four running. bf16_b0 collapsed (0.148 @ 200, see 18:35 entry); hetero_b0/w015/w0045 ~1.5h in, clean.
+
+## 19:33 — Loop iteration 92
+
+All four running, no new events.
+
+## 20:33 — Loop iteration 93
+
+All four running. hetero_b0 at 0.724 @ 80 (healthy so far); w015 at 0.634 @ 77 (slower learning under the heavier uniform dose, as expected from the historical β=0.05 pattern).
+
+## 21:33 — Loop iteration 94
+
+bf16_b0 fully collapsed and staying down (0.072 @ 266). The three hetero arms all past step 100 and healthy: hetero_b0 0.793, w0045 0.762, w015 0.739. Watching the ~170 mark where bf16_b0 fell.
+
+## 22:33 — Loop iteration 95
+
+hetero_b0 (β=0) spiking: 0.79 @ 101 → 0.94 @ 127 — unusually high train reward; the bf16_b0 collapse was preceded by a similar (smaller) overshoot. Dose arms steady ~0.73. Entering the danger zone; watching evals.
+
+## 23:33 — Loop iteration 96
+
+hetero_b0 came back down from its 0.94 spike (0.725 @ 152 — volatile but not collapsed); dose arms steady (w015 0.779, w0045 0.754). All in the 150-200 window now.
+
+## 00:33 — Loop iteration 97
+
+hetero_b0 sliding: 0.94 @ 127 → 0.725 @ 152 → 0.631 @ 176 — downtrend through the danger zone. Dose arms firm (w0045 0.785, w015 0.715). If the slide continues this is the β=0-hetero failure emerging with KL arms unaffected.
+
+## 01:33 — Loop iteration 98
+
+At ~step 200: hetero_b0 0.576 (eroding), w015 0.717, w0045 0.670. The β=0 arm now clearly below both KL arms at matched depth — the separation the rescue claim needs, developing in real time.
+
+## 02:33 — Loop iteration 99
+
+~step 220: hetero_b0 0.553 (still eroding), w015 0.716, w0045 0.803. Gap widening.
+
+## 03:33 — Loop iteration 100: SECOND COLLAPSE — hetero_b0 down, KL arms untouched
+
+hetero_b0 (mixed Δ, β=0) collapsed: 0.553 @ 221 → 0.203 @ 241 — same cliff as bf16_b0 but ~60 steps later (mixed staleness delayed, not prevented, the failure). At the SAME steps the KL'd dose arms read 0.715 (w015) and 0.797 (w0045). Both β=0 controls have now collapsed while every KL-regularized arm (calibrated, w015, w0045, reference) remains stable — the rescue claim's control pair is complete.
+
+## 04:33 — Loop iteration 101
+
+hetero_b0 fully collapsed (0.031 @ 261); dose arms both at 0.80 @ ~265. Cleanest possible contrast.
+
+## 05:33 — Loop iteration 102
+
+All four running; no new events.
+
+## 06:33 — Loop iteration 103
+
+Attribution: the 0.59@300 was a transient (w015 dipped then recovered to 0.785 @ 312). Current: hetero_b0 dead at 0.004 @ 295; w015 0.785 @ 312; w0045 0.793 @ 320. Dose arms sailing.
+
+## 07:33 — Loop iteration 104
+
+All four running; no new events. bf16_b0 ends ~11:39, others ~17:03.
+
+## 08:33 — Loop iteration 105
+
+All four running; no new events.
+
+## 09:33 — Loop iteration 106
+
+All four running; no new events.
+
+## 10:33 — Loop iteration 107
+
+All four running; dose arms both past 400 at 0.72-0.76. bf16_b0 ends ~11:39.
+
+## 11:33 — Loop iteration 108
+
+bf16_b0 6 min from its 24h limit; others ~5.5h out. No new events.
+
+## 12:33 — Loop iteration 109
+
+bf16_b0 finished (24h TIMEOUT, ~step 640, full collapse trajectory recorded). Three hetero arms continue (~19.5h in). No issues.
+
+## 13:33 — Loop iteration 110
+
+Three hetero arms in their final hours; no events.
+
+## 14:33 — Loop iteration 111
+
+Three arms at ~21.5h; dose arms both strong at 500 (0.820, 0.781). ~2.5h to their limits.
+
+## 15:33 — Loop iteration 112
+
+Final ~1.5h for the three hetero arms. No events.
+
+## 16:33 — Loop iteration 113
+
+~30 min to the three arms' limits. Report refresh queued for when they end.
