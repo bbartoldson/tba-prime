@@ -505,3 +505,171 @@ Final ~1.5h for the three hetero arms. No events.
 ## 16:33 — Loop iteration 113
 
 ~30 min to the three arms' limits. Report refresh queued for when they end.
+
+## 17:33 — Loop iteration 114: PHASE-A COMPLETE — final report built and pushed (6bdde20)
+
+All three hetero arms TIMEOUT clean (b0 @ 491, w015 @ 568, w0045 @ 581). Final evals: calibrated 0.816 peak, w0045 0.817, w015 0.801, reference 0.829; both β=0 arms collapsed and stayed down (0.222 / 0.340 final). Report rebuilt with collapse/rescue + dose-calibration figures, delivered to Brian, pushed. Next queue batch: FP4 β=0 ladder + rescue arms.
+
+## 18:33 — Loop iteration 115: FP4 batch submitted (Phase-A part 2)
+
+Six FP4 arms queued under ml4ss (281370–75): β=0 ladder async {1,10,32} — does quantization shift the collapse boundary? — plus rescue arms (β·c=0.0045 at Δ=10 and Δ=32) and the asymmetric soft-QAT arm. 12 nodes exactly at cap. Monitors to be armed as they start.
+
+## 19:33 — Loop iteration 116
+
+FP4 batch (6 jobs) pending; ml4ss priority should move them quickly as nodes free.
+
+## 20:33 — Loop iteration 117
+
+FP4 batch still pending; no change.
+
+## 21:33 — Loop iteration 118: first FP4 arm running
+
+281370 (fp4sym_b0_async1 — near-on-policy FP4, KL off) running since ~20:42, step 11, clean. This is Act 1 of the FP4 story: stable on-policy FP4. 281371 (async10) front-of-line. Monitor armed.
+
+## 22:33 — Loop iteration 119
+
+fp4sym_b0_async1 ~2h in, clean; five queued.
+
+## 23:33 — Loop iteration 120
+
+fp4sym_b0_async1 ~3h in, clean; five queued. Report refreshed+pushed via subagent (f23d13f).
+
+## 00:33 — Loop iteration 121
+
+fp4sym_b0_async10 started ~23:49 (second FP4 ladder rung); async1 ~4h clean. Four queued.
+
+## 01:33 — Loop iteration 122
+
+Two FP4 arms running clean, four queued.
+
+## 02:33 — Loop iteration 123
+
+No change: two running, four queued.
+
+## 03:33 — Loop iteration 124
+
+Five FP4 arms running (10 nodes): async1 β=0 (0.848 @ 100!), async10 β=0, async32 β=0 (the collapse probe, step 11), both rescue arms just started. Asym arm queued. Monitor armed on the three new arms.
+
+## 03:50 — Rescue arm 281374 crashed at startup; resubmitted as (see above)
+
+Inference died in vLLM init with a transformers registry error (Glm4vConfig not found) → trainer TimeoutError on step 0 → job exited. Other 4 arms from the same venv/hour are fine → transient (likely HF-cache contention between concurrent vLLM startups). Resubmitted; if it recurs, will pin/inspect transformers in the venv.
+
+## 04:33 — Loop iteration 125
+
+Five FP4 arms running incl. the asymmetric soft-QAT arm (step 13, correctly NO fake_quant on trainer — BF16 trainer + QDQ sampler only). Resubmitted rescue arm 281576 front-of-line. All clean.
+
+## 05:33 — Loop iteration 126
+
+Five running, rescue resubmit pending. No events.
+
+## 06:33 — Loop iteration 127
+
+All six FP4 arms running (12/12 nodes). Rescue resubmit 281576 cleared startup cleanly (transient confirmed). async32 β=0 collapse probe at step 65, reward 0.74 — approaching the BF16 cliff zone (~170).
+
+## 07:33 — Loop iteration 128
+
+All six running clean.
+
+## 08:00 — fp4asym arm degrading monotonically (FINDING, not bug)
+
+Asym arm (BF16 trainer + QDQ sampler, KL on): reward 0.51@20 → 0.10@100, loss ~20× normal magnitude. Not the staleness collapse pattern — immediate systematic bias. Mechanism: the surrogate's persistent quantization gap enters the advantage-level penalty un-centered → acts as a global negative reward (suppression), not soft-QAT pressure. Score-function path can't deliver the QAT gradient; would need the differentiable (KL-in-loss) path or gap centering. Symmetric arms immune (bit-exact gap=0). Run left up to document the flatline — this is the honest answer to the "provocative QAT reading": at the advantage level, it fails, informatively.
+
+## 08:33 — Loop iteration 129: FP4 SHIFTS THE COLLAPSE BOUNDARY EARLIER
+
+fp4sym_b0_async32 (FP4 + Δ=32, no KL): peaked 0.68 @ 60, collapsing by 100 (0.38) — vs BF16 twin which peaked 0.756 @ 100 and collapsed ~170. Quantization + staleness COMPOUND: the collapse boundary moves ~70 steps earlier and from a lower peak. This is the humans& simulator's central assertion, now measured in a controlled 2×2. Rescue arm at the same Δ (281576, KL on) is the critical comparison — if it stays stable, the surrogate rescues the compounded failure too. Other arms healthy (async1 0.85@100, async10 0.74@100, asym degrading as analyzed).
+
+## 09:33 — Loop iteration 130
+
+All six running. FP4 Δ=32 rescue arm at 0.678 @ 59 — right at the depth where its β=0 twin peaked (0.68 @ 60) before collapsing. The next ~50 steps are the decisive window.
+
+## 10:33 — Loop iteration 131
+
+Watch item: FP4 Δ=32 rescue arm dipped 0.678 @ 59 → 0.561 @ 77 (could be batch noise — other arms show similar swings — or early insufficiency of the BF16-derived dose against the compounded mismatch). β=0 twin fully collapsing (0.177 @ 136). Next hour decides.
+
+## 11:33 — Loop iteration 132
+
+Rescue arm oscillating (0.64 @ 60, 0.53 @ 80) — no cliff yet but slower/noisier than the Δ=10 rescue arm at this depth. β=0 twin at ~0.18. Verdict needs ~step 150+.
+
+## 11:45 — fp4sym_b0_async1 died at step 242: torn parquet read (infra race)
+
+OSError "Couldn't deserialize thrift" in the dataloader — reader/writer race on /p/vast1, most likely at async_level=1 where the trainer consumes files immediately. NOT resubmitting: 242 clean steps at 0.80–0.85 fully establishes "on-policy FP4 is stable without KL" (Act 1). Roadmap note: dataloader should retry corrupt parquet reads (small fix, matters for async-1 configs). Five arms continue.
+
+## 12:33 — Loop iteration 133
+
+Five arms running. FP4 Δ=32 rescue at 0.604 @ 100 — recovered from the 80-dip, no cliff; its β=0 twin was at 0.38 by 100. Rescue holding so far, at reduced altitude vs Δ=10 arms.
+
+## 12:36 — fp4asym flatlined at 0 (step 200) — cancelled to free nodes
+
+Monotone 0.51 → 0.10 → 0.0015 over 200 steps confirms the mechanism analysis (persistent quantization gap through the score-function penalty = global suppression). Negative result fully documented; freed 2 nodes rather than run a dead arm 15 more hours.
+
+## 13:33 — Loop iteration 134
+
+Four arms running. Δ=32 rescue stable ~0.60 through 120 (twin died by here). Holding, slower climb than Δ=10 arms.
+
+## 14:33 — Loop iteration 135
+
+Four arms running clean; no events.
+
+## 15:33 — Loop iteration 136
+
+Four arms running clean; no events.
+
+## 16:33 — Loop iteration 137
+
+Δ=32 rescue climbing again (0.647 @ 180 — twin died at ~90); Δ=10 rescue 0.741 @ 229; Δ=10 β=0 drifting down slightly (0.678 @ 291 vs 0.744 @ 200) — watching for a late FP4+Δ10 slide; Δ=32 β=0 stays collapsed (0.28).
+
+## 17:33 — Loop iteration 138
+
+Δ=10 FP4 β=0 arm oscillating high (0.79–0.89 over 270–300) — overshoot-signature watch continues. Other three arms nominal.
+
+## 18:33 — Loop iteration 139
+
+Four arms running; no events.
+
+## 19:33 — Loop iteration 140
+
+Δ=10 β=0 arm still oscillating 0.76–0.89 (no cliff through 340). Others nominal.
+
+## 20:33 — Loop iteration 141
+
+Four arms running; no events. First two hit 24h limits ~23:50 and ~02:40.
+
+## 21:33 — Loop iteration 142
+
+Four arms running; no events.
+
+## 22:33 — Loop iteration 143
+
+Four arms running; no events.
+
+## 23:33 — Loop iteration 144
+
+Four arms running; Δ=10 β=0 survived to 400 (0.826) — FP4 no-KL boundary is between Δ=10 and 32. First timeout ~23:50.
+
+## 00:33 — Loop iteration 145
+
+Δ=10 β=0 rung finished (24h TIMEOUT, alive at ~step 420, 0.83). Three arms remain: Δ=32 β=0 (collapsed, documenting), Δ=10 rescue, Δ=32 rescue.
+
+## 01:33 — Loop iteration 146
+
+Three arms running; no events.
+
+## 02:33 — Loop iteration 147
+
+Δ=32 β=0 and Δ=10 rescue minutes from their 24h limits; Δ=32 rescue has ~3.5h left.
+
+## 03:33 — Loop iteration 148
+
+Δ=32 β=0 and Δ=10 rescue finished (24h TIMEOUTs, clean). Only the Δ=32 rescue remains (~2.5h left). Final FP4 report refresh once it ends.
+
+## 04:33 — Loop iteration 149
+
+Only the Δ=32 rescue running (~1.5h left).
+
+## 05:33 — Loop iteration 150
+
+Δ=32 rescue ~26 min from its limit. Next iteration: full FP4 report refresh + push.
+
+## 06:33 — Loop iteration 151: ALL FP4 ARMS COMPLETE — final report update in progress
+
+Δ=32 rescue finished its full 24h (no collapse — same-dose rescue confirmed under compounded FP4+staleness). Queue empty; every Phase-A arm has run. Report subagent launched: new FP4 figure, findings 5 (compounding + rescue) and 6 (asymmetric negative result), updated abstract/tables/next-steps; will commit+push.

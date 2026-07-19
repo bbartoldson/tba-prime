@@ -10,7 +10,7 @@
 \title{Phase-A Results: The Free EMA-KL Surrogate Prevents Staleness Collapse,\\
 and Its Theory Picks the Right Dose}
 \author{Brian Bartoldson (experiments run and report drafted with Claude)}
-\date{July 17, 2026 (evening)}
+\date{July 19, 2026}
 
 \newcommand{\E}{\mathbb{E}}
 \newcommand{\KL}{\mathrm{KL}}
@@ -37,7 +37,15 @@ reference through the new machinery reproduces the historical baseline
 ($0.829$ vs.\ $0.827$--$0.831$), and per-$\Delta$ telemetry confirms the
 surrogate's predicted small-$\Delta$ variance (rel.\ error $5.9$ at
 $\Delta\le2$ vs.\ $0.19$ at $\Delta\ge21$) without harming training.
-NVFP4-emulated symmetric training is stable at smoke scale.
+(4)~Under symmetric NVFP4 emulation, quantization \emph{compounds} with
+staleness: the FP4 $\Delta{=}32$, $\beta{=}0$ arm collapses ${\sim}70$ steps
+earlier than its BF16 twin with a lower peak, while $\Delta{\lesssim}10$
+stays stable; the \emph{same} theory dose $\beta c = 0.0045$ keeps $\Delta{=}10$
+healthy and extends the $\Delta{=}32$ collapse boundary ${\sim}3\times$
+(though not to full-horizon stability --- dose scaling for quantization is
+untested). An asymmetric arm (BF16 trainer, FP4 sampler) fails informatively:
+the un-centered quantization gap in the advantage-level penalty acts as a
+global negative reward.
 \end{abstract}
 
 \section{Setup}
@@ -135,19 +143,66 @@ at ${\sim}4$ in $c_i$.
 \paragraph{Finding 4: mechanism and baseline controls.} The homogeneous
 $\Delta{=}10$ reference through the full new machinery (offsets mechanism,
 vLLM anchor, raw-units clamp) peaks $0.829$ / final $0.828$ --- inside the
-historical no-centering band ($0.827$--$0.831$). NVFP4-emulated symmetric
-training (QDQ on trainer forwards and sampler checkpoints, bit-exact) is
-stable at 60-step smoke scale; checkpoints verified on-grid. The six FP4
-arms are submitted ($\beta{=}0$ ladder at async $\{1,10,32\}$, rescue arms at
-$\beta c = 0.0045$ for $\Delta{=}10$ and $32$, and the asymmetric arm); the
-async-1 arm is running cleanly, with first evals $0.600$ at step 0 and
-$0.615$ at step 20 (partial --- two points only).
+historical no-centering band ($0.827$--$0.831$).
+
+\section{FP4 results}
+
+All FP4 arms use symmetric NVFP4 QDQ emulation (STE on trainer forwards, QDQ
+on sampler checkpoints, bit-exact between the two) unless noted; same
+Qwen3-4B/Countdown setup as above.
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.92\linewidth]{fig_fp4.pdf}
+  \caption{FP4 $\beta{=}0$ ladder and rescue arms. Blue/aqua: $\beta{=}0$ at
+  $\Delta{=}10$ (stable) and $\Delta{=}32$ (collapses by step ${\sim}100$).
+  Yellow/violet: the same theory dose $\beta c = 0.0045$ at $\Delta{=}10$
+  (stable through 24\,h) and $\Delta{=}32$ (holds ${\sim}3\times$ past the
+  $\beta{=}0$ boundary, degrades late).}
+  \label{fig:fp4}
+\end{figure}
+
+\paragraph{Finding 5: quantization compounds with staleness, and the same
+dose rescues it.} The $\beta{=}0$ ladder (Fig.~\ref{fig:fp4}): at
+$\Delta{\approx}1$, FP4 training is stable and strong for 242 steps (train
+reward $0.80$--$0.85$, eval $0.794$ at step 220; run ended early by a
+data-loader file race, unrelated to training). At $\Delta{=}10$ it survives
+its full 24\,h ($\sim$420 steps), volatile in train reward but climbing in
+eval ($0.802$ at step 400). At $\Delta{=}32$ it collapses by step ${\sim}100$
+(train reward $0.38$; eval already $0.17$) and stays collapsed ($0.303$ at
+400). The BF16 twin at the same lag collapsed at step ${\sim}170$ from a
+higher peak ($0.752$ vs.\ $0.637$): quantization and staleness
+\emph{compound} --- the boundary moves ${\sim}70$ steps earlier and the
+pre-collapse peak drops --- and at this horizon the $\beta{=}0$ boundary sits
+between $\Delta{=}10$ and $32$. The rescue arms apply the \emph{same} theory
+dose $\beta c = 0.0045$ used throughout, with no quantization-specific
+retuning. At $\Delta{=}10$ this is fully sufficient: healthy through 24\,h,
+eval $0.784$ at step 400. At $\Delta{=}32$ it carries training through and far
+beyond the twin's collapse window ($0.636$ at 100, $0.679$ at 180, peak
+$0.709$ at 260 --- a ${\sim}3\times$ extension of the boundary), but the
+climb is slower and noisier at reduced altitude, and late in the 24\,h run
+evals degrade ($0.51$ at 340 $\to$ $0.16$ at 400): the unscaled dose delays
+rather than fully prevents the compounded failure. A quantization-aware dose
+scaling (treating the quantization gap as extra effective staleness) is the
+natural refinement --- untested.
+
+\paragraph{Finding 6 (negative): the asymmetric arm fails informatively.}
+The asymmetric arm (BF16 trainer, QDQ sampler, KL on at $\beta c = 0.0045$)
+degrades monotonically from the start: eval $0.56$ at step 20, $0.04$ at 100,
+$0.001$ by step 180; cancelled at 200. Mechanism: the surrogate's persistent
+quantization gap enters the advantage-level (score-function) penalty
+un-centered, acting as a global negative reward that suppresses all sampled
+behavior --- not corrective QAT pressure. A differentiable KL-in-loss path,
+or centering of the gap, would be needed for this setting.
 
 \section{Next steps}
 
-Paired seeds ($\ge 3$) on calibrated vs.\ best-uniform; FP4 $\beta{=}0$
-ladder and rescue arms (does quantization shift the collapse boundary or the
-required dose?); $\Delta_i$ floor test; a second task (MATH). Deferred items
+Paired seeds ($\ge 3$) on calibrated vs.\ best-uniform; quantization-aware
+dose scaling for the compounded mismatch (the $\Delta{=}32$ rescue's late
+degradation suggests the unscaled dose is insufficient there); a
+differentiable KL-in-loss path or gap-centered variant for the asymmetric
+setting; dataloader retry-on-corrupt-parquet (the file race that ended the
+async-1 arm); $\Delta_i$ floor test; a second task (MATH). Deferred items
 and operational cautions are recorded in \texttt{EXPERIMENT\_ROADMAP.md} \S7
 and \texttt{report\_fp4/OPERATIONS\_LOG.md}.
 
@@ -175,6 +230,12 @@ Arm & $\beta$ & async & offsets & $\Delta$-source \\
 \texttt{hetero\_b0\_async32} & 0 & 32 & 1,4,10,32 & --- \\
 \texttt{bf16\_b0\_async32} & 0 & 32 & --- (legacy rule) & --- \\
 \texttt{fp4sym\_smoke} (60 steps) & 0.005 & 10 & --- & global \\
+\texttt{fp4sym\_b0\_async1} & 0 & 1 & --- & --- \\
+\texttt{fp4sym\_b0\_async10} & 0 & 10 & --- & --- \\
+\texttt{fp4sym\_b0\_async32} & 0 & 32 & --- & --- \\
+\texttt{fp4sym\_approxKL\_b005\_async10} & 0.005 & 10 & --- & global \\
+\texttt{fp4sym\_approxKL\_b0016\_async32} & 0.016 & 32 & --- & global \\
+\texttt{fp4asym\_approxKL\_b005\_async10}$^{\dagger}$ & 0.005 & 10 & --- & global \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -183,7 +244,8 @@ KL penalty: $-\beta \sum_t c\,\mathrm{clamp}(\log T_n - \log T_{n-\Delta},
 \pm 10)$ added to advantages (no centering); $c$ per-token ($c_i$) or global
 per the table. FP4 arms add \texttt{rollout\_quant=nvfp4} +
 \texttt{fake\_quant=nvfp4} (252 patched linears; embeddings,
-\texttt{lm\_head}, norms BF16).
+\texttt{lm\_head}, norms BF16). $^{\dagger}$BF16 trainer, QDQ sampler
+(asymmetric; \texttt{fake\_quant} off).
 
 \section{Eval table (selected steps)}
 
@@ -199,6 +261,13 @@ Hetero, uniform $w{=}0.0045$ & 0.722 & 0.759 & 0.782 & 0.794 & 0.817 & 0.806 (56
 Hetero, uniform $w{=}0.015$ & 0.670 & 0.730 & 0.763 & 0.774 & 0.801 & 0.788 (560) \\
 Hetero, $\beta{=}0$ & 0.725 & 0.662 & 0.002 & 0.123 & --- & 0.222 (480) \\
 Homog.\ $\Delta{=}32$, $\beta{=}0$ & 0.752 & 0.140 & 0.246 & 0.271 & 0.319 & 0.340 (540) \\
+\midrule
+FP4 $\Delta{\approx}1$, $\beta{=}0$ & 0.726 & 0.786 & --- & --- & --- & 0.779 (240) \\
+FP4 $\Delta{=}10$, $\beta{=}0$ & 0.710 & 0.758 & 0.810 & 0.802 & --- & 0.802 (400) \\
+FP4 $\Delta{=}32$, $\beta{=}0$ & 0.172 & 0.260 & 0.279 & 0.303 & --- & 0.303 (400) \\
+FP4 $\Delta{=}10$, KL on & 0.664 & 0.731 & 0.755 & 0.784 & --- & 0.784 (400) \\
+FP4 $\Delta{=}32$, KL on & 0.636 & 0.635 & 0.669 & 0.159 & --- & 0.159 (400) \\
+FP4 asym.\ (BF16 trainer) & 0.036 & --- & --- & --- & --- & 0.001 (180) \\
 \bottomrule
 \end{tabular}
 \end{center}
