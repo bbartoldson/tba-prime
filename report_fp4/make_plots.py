@@ -95,4 +95,13 @@ line(ax, DATA["fp4sym_resc_async32"], C4, "FP4 Δ=32, KL on")
 base(ax)
 fig.tight_layout()
 fig.savefig("fig_fp4.pdf")
+
+# ---- Figure 5: fp4hetero — the original-hypothesis cell -------------------
+fig, ax = plt.subplots(figsize=(6.4, 3.5), dpi=200)
+line(ax, DATA["fp4hetero_perRollout"], C1, "Per-rollout $c_i$ (staleness-weighted)")
+line(ax, DATA["fp4hetero_w0045"], C2, "Uniform w=0.0045")
+line(ax, DATA["fp4hetero_b0"], C3, "KL off (β=0)")
+base(ax)
+fig.tight_layout()
+fig.savefig("fig_fp4hetero.pdf")
 print("figures written")

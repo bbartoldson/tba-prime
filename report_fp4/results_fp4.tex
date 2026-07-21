@@ -10,7 +10,7 @@
 \title{Phase-A Results: The Free EMA-KL Surrogate Prevents Staleness Collapse,\\
 and Its Theory Picks the Right Dose}
 \author{Brian Bartoldson (experiments run and report drafted with Claude)}
-\date{July 19, 2026}
+\date{July 20, 2026}
 
 \newcommand{\E}{\mathbb{E}}
 \newcommand{\KL}{\mathrm{KL}}
@@ -45,7 +45,14 @@ healthy and extends the $\Delta{=}32$ collapse boundary ${\sim}3\times$
 (though not to full-horizon stability --- dose scaling for quantization is
 untested). An asymmetric arm (BF16 trainer, FP4 sampler) fails informatively:
 the un-centered quantization gap in the advantage-level penalty acts as a
-global negative reward.
+global negative reward. (5)~In the original-hypothesis cell --- FP4 with
+\emph{heterogeneous} staleness $\Delta_i \in \{1,4,10,32\}$ --- the
+$\beta{=}0$ control collapses at ${\sim}$step 205 while both KL arms train
+healthily through their full 24\,h horizons; on eval, per-rollout
+staleness-weighted and uniform dosing \emph{tie} (peaks $0.771$ vs.\ $0.764$,
+finals $0.771$ vs.\ $0.764$, single seed): the hypothesis's rescue claim
+holds, but the weighting refinement is not separable from a well-chosen
+uniform dose here.
 \end{abstract}
 
 \section{Setup}
@@ -195,6 +202,47 @@ un-centered, acting as a global negative reward that suppresses all sampled
 behavior --- not corrective QAT pressure. A differentiable KL-in-loss path,
 or centering of the gap, would be needed for this setting.
 
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.92\linewidth]{fig_fp4hetero.pdf}
+  \caption{The original-hypothesis cell: symmetric NVFP4 with heterogeneous
+  staleness $\Delta_i \in \{1,4,10,32\}$. Yellow ($\beta{=}0$) collapses at
+  ${\sim}$step 205 and never recovers; both KL arms --- per-rollout
+  staleness-weighted $c_i$ (blue) and uniform $w{=}0.0045$ (aqua) --- train
+  healthily through their full 24\,h horizons and end within $0.007$ eval of
+  each other.}
+  \label{fig:fp4hetero}
+\end{figure}
+
+\paragraph{Finding 7: the original-hypothesis cell --- staleness-weighted KL
+under FP4 heterogeneity.} The batch that motivated this project: three arms,
+all symmetric NVFP4 QDQ with the heterogeneous offsets
+$\Delta_i \in \{1,4,10,32\}$ at \texttt{async\_level} 32 --- a $\beta{=}0$
+control, a uniform dose $w{=}0.0045$ ($\beta{=}0.016$, global
+$\Delta$-source), and per-rollout calibrated $c_i$ ($\beta{=}0.005$)
+(Fig.~\ref{fig:fp4hetero}). The control collapses at ${\sim}$step 205 (train
+reward $0.75$ at 140 $\to$ $0.51$ at 200 $\to$ $0.26$ at 212; eval $0.644$ at
+180 $\to$ $0.161$ at 200) and never recovers through step 327 (eval $0.163$
+at 320; the run ended early by a data-loader file race, unrelated to
+training). The boundary at ${\sim}205$ sits between the FP4-homogeneous
+$\Delta{=}32$ collapse (${\sim}100$) and the BF16-heterogeneous collapse
+(${\sim}230$), consistent with an intermediate effective mismatch. Both KL
+arms ran their full 24\,h with zero errors and ended healthy (final steps
+${\sim}361$/$381$; last evals at step 360) --- notably, under the
+heterogeneous mixture the uniform dose did \emph{not} reproduce the late
+(${\sim}340$) degradation of its homogeneous-$\Delta{=}32$ counterpart; the
+mixture's milder mean lag presumably explains it. The verdict on
+staleness-weighting, from the eval curves: peaks $0.771$ (per-rollout, step
+360) vs.\ $0.764$ (uniform, step 340), finals $0.771$ vs.\ $0.764$ at step
+360 --- both gaps under $0.01$, a \emph{tie} at one seed, with the lead
+trading at matched steps ($0.705$ vs.\ $0.711$ at 200; $0.756$ vs.\ $0.741$
+at 300; $0.742$ vs.\ $0.746$ at 320). (Train reward frequently favored the
+per-rollout arm --- e.g.\ $0.807$ vs.\ $0.735$ at 200 --- but that lead
+traded on batch noise; we judge on evals.) Either way, the confirmed part
+stands: staleness-weighted KL rescues FP4-heterogeneous training where
+$\beta{=}0$ collapses --- the original hypothesis's rescue claim holds; the
+comparison against uniform dosing is a tie at this seed count.
+
 \section{Next steps}
 
 Paired seeds ($\ge 3$) on calibrated vs.\ best-uniform; quantization-aware
@@ -236,6 +284,9 @@ Arm & $\beta$ & async & offsets & $\Delta$-source \\
 \texttt{fp4sym\_approxKL\_b005\_async10} & 0.005 & 10 & --- & global \\
 \texttt{fp4sym\_approxKL\_b0016\_async32} & 0.016 & 32 & --- & global \\
 \texttt{fp4asym\_approxKL\_b005\_async10}$^{\dagger}$ & 0.005 & 10 & --- & global \\
+\texttt{fp4hetero\_b0\_async32} & 0 & 32 & 1,4,10,32 & --- \\
+\texttt{fp4hetero\_approxKL\_global\_w0045} & 0.016 & 32 & 1,4,10,32 & global \\
+\texttt{fp4hetero\_approxKL\_b005\_perRollout} & 0.005 & 32 & 1,4,10,32 & per\_rollout \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -268,6 +319,9 @@ FP4 $\Delta{=}32$, $\beta{=}0$ & 0.172 & 0.260 & 0.279 & 0.303 & --- & 0.303 (40
 FP4 $\Delta{=}10$, KL on & 0.664 & 0.731 & 0.755 & 0.784 & --- & 0.784 (400) \\
 FP4 $\Delta{=}32$, KL on & 0.636 & 0.635 & 0.669 & 0.159 & --- & 0.159 (400) \\
 FP4 asym.\ (BF16 trainer) & 0.036 & --- & --- & --- & --- & 0.001 (180) \\
+FP4-hetero, $\beta{=}0$ & 0.716 & 0.161 & 0.254 & --- & --- & 0.163 (320) \\
+FP4-hetero, uniform $w{=}0.0045$ & 0.659 & 0.711 & 0.741 & --- & --- & 0.764 (360) \\
+FP4-hetero, per-rollout $c_i$ & 0.649 & 0.705 & 0.756 & --- & --- & 0.771 (360) \\
 \bottomrule
 \end{tabular}
 \end{center}

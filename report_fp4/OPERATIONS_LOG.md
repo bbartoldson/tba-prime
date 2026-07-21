@@ -673,3 +673,131 @@ Only the Δ=32 rescue running (~1.5h left).
 ## 06:33 — Loop iteration 151: ALL FP4 ARMS COMPLETE — final report update in progress
 
 Δ=32 rescue finished its full 24h (no collapse — same-dose rescue confirmed under compounded FP4+staleness). Queue empty; every Phase-A arm has run. Report subagent launched: new FP4 figure, findings 5 (compounding + rescue) and 6 (asymmetric negative result), updated abstract/tables/next-steps; will commit+push.
+
+## 06:45 — FINAL REPORT PUSHED (1b8dffd, 5 pages) — Phase A closed
+
+Correction surfaced during the final data pull: the Δ=32 FP4 rescue arm degraded late (0.56–0.71 through ~320, then 0.16 @ 400) — the unscaled dose DELAYS the compounded failure ~3× past the β=0 boundary but doesn't fully prevent it. Report states this honestly; quantization-aware dose scaling promoted to the top next experiment. Final eval summary: reference 0.829; calibrated 0.816; w0045 0.817; w015 0.801; both BF16/hetero β=0 collapsed; FP4 β=0: Δ1 0.79 (242 steps), Δ10 0.81 (survived), Δ32 collapsed ~100; FP4 rescue: Δ10 0.784 stable, Δ32 delayed-then-degraded; asym flatlined (mechanism documented). All arms done, queue empty, everything committed+pushed. PDF delivered to Brian.
+
+## 07:33 — Loop iteration 152
+
+Queue empty; Phase A closed, report delivered (1b8dffd). Nothing to babysit.
+
+## 08:33 — Loop iteration 153 (FINAL): loop retired
+
+Queue empty for the third consecutive hour; every Phase-A objective in the loop's mandate is complete (all arms run, findings documented, reports pushed through 1b8dffd). Stopping the hourly cron — restart with /loop when the next batch (seeds, dose-scaling, MATH) is ready.
+
+=== END OF PHASE-A OPERATIONS LOG ===
+
+=== OPERATIONS LOG REOPENED: fp4hetero batch (the original hypothesis cell) ===
+
+## Jul 19 ~09:10 — Submitted the staleness-weighted-KL × FP4 test
+
+Brian's call: the original idea (FP4 instability fixed by staleness-WEIGHTED KL, not just KL) was never directly tested — the review's sequencing deferred the factorial. Now sharpened by the uniform-dose late failure at compounded Δ=32. Three arms, all symmetric NVFP4 + offsets {1,4,10,32}: 282348 β=0 control, 282349 uniform w=0.0045, 282350 per-rollout calibrated (decisive). Configs committed+pushed; hourly loop restarted (eddc0e4f).
+
+## 19:51 — fp4hetero iteration 1 (queue cleared this evening)
+
+β=0 control running (step 6, offsets cycling, clean), uniform arm just started, decisive perRollout arm front-of-line. Monitor armed on the two runners.
+
+## 20:51 — fp4hetero iteration 2
+
+Control + uniform running clean; decisive arm still awaiting nodes (Resources).
+
+## 21:51 — fp4hetero iteration 3: ALL THREE ARMS RUNNING
+
+Decisive perRollout arm started 20:55 (step 12, clean). Full comparison in flight; verdicts land through tomorrow evening.
+
+## 22:51 — fp4hetero iteration 4
+
+All three climbing normally: b0 0.581@54, uniform 0.648@44, perRollout 0.507@27. No events.
+
+## 23:51 — fp4hetero iteration 5
+
+All three running; no events.
+
+## 00:51 — fp4hetero iteration 6
+
+All three running; no events.
+
+## 01:51 — fp4hetero iteration 7
+
+β=0 riding high (0.836@101 — familiar pre-collapse pattern), uniform 0.672@89, perRollout 0.580@75. Watching the 150–250 window for the control's collapse.
+
+## 02:51 — fp4hetero iteration 8
+
+All three running; b0 ~0.69–0.84 around step 100 (volatile), KL arms steady. No events.
+
+## 03:51 — fp4hetero iteration 9
+
+Control still climbing at 120 (0.729); collapse window opens shortly. KL arms steady. No events.
+
+## 04:51 — fp4hetero iteration 10
+
+Control at 0.747@140, still pre-collapse. All quiet.
+
+## 05:51 — fp4hetero iteration 11
+
+Control turning: 0.747@140 → 0.555@165 (slide begun, on schedule). KL arms above it: uniform 0.768@150, perRollout 0.697@139.
+
+## 06:51 — fp4hetero iteration 12
+
+Control wobbling (0.62@160, 0.67@180) — sliding but no cliff yet. KL arms steady. No events.
+
+## 07:51 — fp4hetero iteration 13
+
+No stall (trainer at ~199, normal pace); control showing KV-cache preemptions (lengthening generations — early degradation symptom). KL arms nominal.
+
+## 08:51 — fp4hetero iteration 14: CONTROL COLLAPSED (~step 205)
+
+β=0: 0.51@200 → 0.26@212 — cliff on schedule (FP4-hetero boundary ~205, between FP4-homog-32's ~100 and BF16-hetero's ~230, consistent with intermediate effective mismatch). Uniform 0.754@196 and perRollout 0.647@186 both unaffected. Now the decisive late window: does perRollout outlast uniform past ~340?
+
+## 09:51 — fp4hetero iteration 15
+
+perRollout 0.807@200 (leading!), uniform 0.735@200, control collapsed. All running.
+
+## 10:51 — fp4hetero iteration 16
+
+Both KL arms dipped in the 200–226 window (uniform 0.486@226, perRollout 0.638@219) — volatility or the start of uniform's late failure; watching.
+
+## 11:51 — fp4hetero iteration 17
+
+Dips were batch noise: uniform back to 0.770@240; perRollout 0.838@220 — consistently ABOVE uniform at matched steps (unlike BF16 where they tied). Both healthy deep past the control's collapse.
+
+## 12:51 — fp4hetero iteration 18
+
+All three running; no events.
+
+## 13:51 — fp4hetero iteration 19
+
+Both KL arms dipped together at 260 (0.66 each — correlated batch noise); perRollout led at 240 (0.842 vs 0.770). Entering the uniform-failure watch window (~300+).
+
+## 14:51 — fp4hetero iteration 20
+
+Uniform bounced (0.815@280); perRollout soft (0.641@280) — lead trading on batch noise. Both healthy. Real discrimination: 340+ window and final evals.
+
+## 15:51 — fp4hetero iteration 21
+
+All running; uniform entered the late window at 0.662@300. No events.
+
+## 16:51 — fp4hetero iteration 22
+
+Both KL arms ~0.63–0.66 at 300, level. Late window in progress.
+
+## 17:15 — fp4hetero_b0 ended at step 327 (torn parquet read, ≥300 → no resubmit)
+
+Control's data complete: collapse ~205, no recovery through 327. Uniform (320) and perRollout arms continue.
+
+## 17:51 — fp4hetero iteration 23
+
+At 320: perRollout 0.801, uniform 0.713 — both healthy in the late window, perRollout ahead.
+
+## 18:51 — fp4hetero iteration 24
+
+Both through 340 healthy (uniform 0.776, perRollout 0.699) — past the homogeneous failure onset with no degradation in either.
+
+## 19:51 — fp4hetero iteration 25
+
+Uniform arm finished (24h TIMEOUT, healthy to the end). Only the decisive perRollout arm remains (~1h left, at ~360).
+
+## 20:55 — fp4hetero BATCH COMPLETE — final report update launched
+
+Decisive perRollout arm ended healthy at step 381 (24h TIMEOUT, zero errors); uniform ended healthy at 361; control collapsed ~205. Both KL arms survived to horizon where β=0 died — the rescue half of the original hypothesis holds under FP4 heterogeneity. Eval-curve verdict on per-rollout vs uniform being computed by the report subagent (train-reward suggested a per-rollout lead; evals decide).

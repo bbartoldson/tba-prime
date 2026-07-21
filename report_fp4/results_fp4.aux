@@ -25,7 +25,7 @@
 \newlabel{fig:collapse}{{1}{2}{Collapse without the KL penalty; stability with it. Yellow (heterogeneous) and violet (homogeneous $\Delta {=}32$) are $\beta {=}0$: both collapse (steps ${\sim }230$ and ${\sim }170$) and never recover. Aqua (uniform dose $w{=}0.0045$) trains through the same window untouched; blue is the homogeneous $\Delta {=}10$ reference}{figure.1}{}}
 \@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces All stable arms. Calibrated per-rollout $c_i$ (aqua) vs.\ the two uniform doses (yellow $w{=}0.0045$, violet $w{=}0.015$) under the same $\Delta _i \in \{1,4,10,32\}$ mixture; blue is the homogeneous reference.}}{2}{figure.2}\protected@file@percent }
 \newlabel{fig:dose}{{2}{2}{All stable arms. Calibrated per-rollout $c_i$ (aqua) vs.\ the two uniform doses (yellow $w{=}0.0045$, violet $w{=}0.015$) under the same $\Delta _i \in \{1,4,10,32\}$ mixture; blue is the homogeneous reference}{figure.2}{}}
-\@writefile{toc}{\contentsline {paragraph}{\tocparagraph {}{}{Finding 2: calibration matches the best swept dose --- without the sweep.}}{2}{section*.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{\tocparagraph {}{}{Finding 2: calibration matches the best swept dose --- without the sweep.}}{3}{section*.4}\protected@file@percent }
 \@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Relative error of the surrogate vs.\ exact EMA-KL by lag stratum (calibrated run; window-median smoothed; log scale).}}{3}{figure.3}\protected@file@percent }
 \newlabel{fig:strata}{{3}{3}{Relative error of the surrogate vs.\ exact EMA-KL by lag stratum (calibrated run; window-median smoothed; log scale)}{figure.3}{}}
 \@writefile{toc}{\contentsline {paragraph}{\tocparagraph {}{}{Finding 3: the surrogate's error is strongly $\Delta $-dependent --- and training doesn't care.}}{3}{section*.5}\protected@file@percent }
@@ -35,13 +35,16 @@
 \@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces FP4 $\beta {=}0$ ladder and rescue arms. Blue/aqua: $\beta {=}0$ at $\Delta {=}10$ (stable) and $\Delta {=}32$ (collapses by step ${\sim }100$). Yellow/violet: the same theory dose $\beta c = 0.0045$ at $\Delta {=}10$ (stable through 24\,h) and $\Delta {=}32$ (holds ${\sim }3\times $ past the $\beta {=}0$ boundary, degrades late).}}{4}{figure.4}\protected@file@percent }
 \newlabel{fig:fp4}{{4}{4}{FP4 $\beta {=}0$ ladder and rescue arms. Blue/aqua: $\beta {=}0$ at $\Delta {=}10$ (stable) and $\Delta {=}32$ (collapses by step ${\sim }100$). Yellow/violet: the same theory dose $\beta c = 0.0045$ at $\Delta {=}10$ (stable through 24\,h) and $\Delta {=}32$ (holds ${\sim }3\times $ past the $\beta {=}0$ boundary, degrades late)}{figure.4}{}}
 \@writefile{toc}{\contentsline {paragraph}{\tocparagraph {}{}{Finding 6 (negative): the asymmetric arm fails informatively.}}{4}{section*.8}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\tocsection {}{4}{Next steps}}{4}{section.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\tocsection {Appendix}{A}{Configurations}}{4}{appendix.A}\protected@file@percent }
-\newlabel{app:configs}{{A}{4}{Configurations}{appendix.A}{}}
+\@writefile{toc}{\contentsline {paragraph}{\tocparagraph {}{}{Finding 7: the original-hypothesis cell --- staleness-weighted KL under FP4 heterogeneity.}}{4}{section*.9}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces The original-hypothesis cell: symmetric NVFP4 with heterogeneous staleness $\Delta _i \in \{1,4,10,32\}$. Yellow ($\beta {=}0$) collapses at ${\sim }$step 205 and never recovers; both KL arms --- per-rollout staleness-weighted $c_i$ (blue) and uniform $w{=}0.0045$ (aqua) --- train healthily through their full 24\,h horizons and end within $0.007$ eval of each other.}}{5}{figure.5}\protected@file@percent }
+\newlabel{fig:fp4hetero}{{5}{5}{The original-hypothesis cell: symmetric NVFP4 with heterogeneous staleness $\Delta _i \in \{1,4,10,32\}$. Yellow ($\beta {=}0$) collapses at ${\sim }$step 205 and never recovers; both KL arms --- per-rollout staleness-weighted $c_i$ (blue) and uniform $w{=}0.0045$ (aqua) --- train healthily through their full 24\,h horizons and end within $0.007$ eval of each other}{figure.5}{}}
+\@writefile{toc}{\contentsline {section}{\tocsection {}{4}{Next steps}}{5}{section.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\tocsection {Appendix}{A}{Configurations}}{5}{appendix.A}\protected@file@percent }
+\newlabel{app:configs}{{A}{5}{Configurations}{appendix.A}{}}
 \newlabel{tocindent-1}{0pt}
 \newlabel{tocindent0}{0pt}
 \newlabel{tocindent1}{72.39178pt}
 \newlabel{tocindent2}{0pt}
 \newlabel{tocindent3}{0pt}
-\@writefile{toc}{\contentsline {section}{\tocsection {Appendix}{B}{Eval table (selected steps)}}{5}{appendix.B}\protected@file@percent }
-\gdef \@abspage@last{5}
+\@writefile{toc}{\contentsline {section}{\tocsection {Appendix}{B}{Eval table (selected steps)}}{6}{appendix.B}\protected@file@percent }
+\gdef \@abspage@last{6}
