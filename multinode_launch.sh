@@ -185,6 +185,10 @@ fi
 # --- Heterogeneous staleness knobs ---
 # kl_approx_delta_source=per_rollout: calibrate the approx-KL coefficient with
 # each sample's true lag Δ_i instead of the global max_async_level.
+if [ -n "$kl_fallback" ]; then
+    objective_args+=" --grpo.kl-fallback $kl_fallback"
+fi
+
 if [ -n "$kl_approx_delta_source" ]; then
     objective_args+=" --grpo.kl-approx-delta-source $kl_approx_delta_source"
 fi

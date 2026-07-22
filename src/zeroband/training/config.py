@@ -256,6 +256,22 @@ class GRPOLossConfig(BaseConfig):
         Field(default="off"),
     ]
 
+    kl_fallback: Annotated[
+        Literal["off", "exact_on_trigger"],
+        Field(
+            default="off",
+            description=(
+                "'exact_on_trigger': monitor |avg_KL| of the surrogate; when it "
+                "exceeds kl_fallback_factor x its steps-100-200 baseline for "
+                "kl_fallback_sustain consecutive rollout steps, latch the loss "
+                "to the exact EMA-KL branch (already computed each step) for "
+                "the remainder of the run."
+            ),
+        ),
+    ]
+    kl_fallback_factor: Annotated[float, Field(default=2.0)]
+    kl_fallback_sustain: Annotated[int, Field(default=20)]
+
     kl_approx_delta_source: Annotated[
         Literal["global", "per_rollout"],
         Field(

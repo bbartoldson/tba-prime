@@ -224,6 +224,15 @@ def train(config: TrainingConfig):
 
     # --- Configuration ---
     tb_beta = config.grpo.off_policy.beta if isinstance(config.grpo.off_policy, TBConfig) else None
+    # Error-triggered exact-KL fallback state (kl_fallback == "exact_on_trigger"):
+    # baseline |avg_KL| accumulates over rollout steps 100-200; after that, if
+    # |avg_KL| exceeds factor*baseline for `sustain` consecutive rollout steps,
+    # we latch to the exact EMA-KL branch (already computed every step) for the
+    # rest of the run.
+    kl_fallback_baseline_acc: list[float] = []
+    kl_fallback_streak = 0
+    kl_fallback_active = False
+
     while True:
         if tb_beta is not None and config.grpo.off_policy.beta_decay_end > 0:
             beta_decay_end = config.grpo.off_policy.beta_decay_end
@@ -265,6 +274,9 @@ def train(config: TrainingConfig):
             # parquet 'step' column (generating checkpoint) to get per-rollout
             # lags Δ_i for kl_approx_delta_source == "per_rollout".
             current_rollout_step = training_progress.step // config.optim.step_per_rollout
+
+            # Latched by the fallback trigger below (one-iteration latency by design).
+            effective_kl_approx = "off" if kl_fallback_active else config.grpo.kl_approx
 
             def get_gen_deltas(batch, device="cpu") -> torch.Tensor | None:
                 if config.grpo.kl_approx_delta_source != "per_rollout":
@@ -409,7 +421,7 @@ def train(config: TrainingConfig):
 
                         masked_per_token_logps = batch["loss_mask"][:, 1:] * batch["train_logprobs"]
                         masked_ref_logprobs = batch["loss_mask"][:, 1:] * batch["ref_logprobs"]
-                        if config.grpo.kl_approx == "ema_first_order_use":
+                        if effective_kl_approx == "ema_first_order_use":
                             # Approximation per main.tex eq 2.10:
                             #   log T_n - log E_n ≈ α/(Δ(1-α)) · (log T_n - log T_{n-Δ})
                             # where log T_n = train_logprobs (live train at start of
@@ -557,6 +569,27 @@ def train(config: TrainingConfig):
                     logger.warning(f"Error logging samples to WandB: {e}")
 
             # Now here's the complete grad_acc_step loop WITHOUT the WandB logging inside it:
+            if (
+                config.grpo.kl_fallback == "exact_on_trigger"
+                and isinstance(config.grpo.off_policy, TBConfig)
+                and kl_avg_list
+            ):
+                cur_abs_kl = float(sum(abs(float(x)) for x in kl_avg_list) / len(kl_avg_list))
+                if 100 <= current_rollout_step <= 200:
+                    kl_fallback_baseline_acc.append(cur_abs_kl)
+                elif current_rollout_step > 200 and kl_fallback_baseline_acc and not kl_fallback_active:
+                    base = sum(kl_fallback_baseline_acc) / len(kl_fallback_baseline_acc)
+                    kl_fallback_streak = kl_fallback_streak + 1 if cur_abs_kl > config.grpo.kl_fallback_factor * base else 0
+                    if kl_fallback_streak >= config.grpo.kl_fallback_sustain:
+                        kl_fallback_active = True
+                        logger.warning(
+                            f"KL fallback TRIGGERED at rollout step {current_rollout_step}: |avg_KL|={cur_abs_kl:.3f} > "
+                            f"{config.grpo.kl_fallback_factor}x baseline {base:.3f} for {config.grpo.kl_fallback_sustain} steps; "
+                            f"switching to exact EMA-KL from next step"
+                        )
+                metric_averager.update("kl_fallback/active", torch.tensor(float(kl_fallback_active)))
+                metric_averager.update("kl_fallback/abs_avg_kl", torch.tensor(cur_abs_kl))
+
             for grad_acc_step in range(num_grad_acc_steps):
                 # logZ_batch = 0.0
                 logZ_batch_reward_only = 0.0
@@ -644,7 +677,7 @@ def train(config: TrainingConfig):
                     # tb_beta = tb_beta # adaptive_beta_test
                     tb_beta=effective_tb_beta,
                     mean_KL=kl_term,
-                    kl_approx=config.grpo.kl_approx,
+                    kl_approx=effective_kl_approx,
                     ema_alpha=config.grpo.ema_alpha,
                     max_async_level=config.max_async_level,
                     metrics_out=kl_approx_metrics,

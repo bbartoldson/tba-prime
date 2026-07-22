@@ -167,6 +167,10 @@ if [ -n "$vllm_logprobs" ] && [ "$vllm_logprobs" = "true" ]; then
     objective_args+=" --use-vllm-logprobs --no-recompute-logprobs"
 fi
 
+if [ -n "$kl_fallback" ]; then
+    objective_args+=" --grpo.kl-fallback $kl_fallback"
+fi
+
 if [ -n "$kl_approx_delta_source" ]; then
     objective_args+=" --grpo.kl-approx-delta-source $kl_approx_delta_source"
 fi
