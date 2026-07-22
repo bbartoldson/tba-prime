@@ -1,0 +1,22 @@
+# Within-group mixing + PER-ROLLOUT calibrated c_i — the sharpest test of staleness weighting.
+model="Qwen/Qwen3-4B-Instruct-2507"
+LR=1e-6
+sampled_k=16
+train_k=16
+async_level=32
+steps=720
+type=tb
+project=" --monitor.wandb.project fp4_KL "
+conf=COUNTDOWN.toml
+seq_length=4096
+eval_steps=20
+reference_mode=ema
+ema_alpha=0.9
+kl_approx=ema_first_order_use
+kl_centering=false
+vllm_logprobs=true
+staleness_offsets=1,4,10,32
+staleness_within_group=true
+
+beta=0.005
+kl_approx_delta_source=per_rollout
