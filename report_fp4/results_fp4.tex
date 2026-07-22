@@ -80,6 +80,24 @@ to every rollout ($c_{\mathrm{glob}} = 0.9/3.2 = 0.28125$). The per-token
 clamp is in raw log-ratio units ($\pm 10$ before the coefficient), so
 truncation is $\Delta$-invariant.
 
+\paragraph{How the uniform constant was chosen (design decision).} The
+uniform arms' primary constant was fixed by \emph{transporting} the
+known-good effective strength from the homogeneous $\Delta{=}10$ baseline
+($\beta c = 0.005 \times 0.9 = 0.0045$) and anchoring the global coefficient
+at the \emph{maximum} staleness: $c_{\mathrm{glob}}$ uses
+$\Delta_{\max} = 32$, and $\beta = 0.0045 / 0.28125 = 0.016$ so that
+$\beta\,c_{\mathrm{glob}} = 0.0045$. This choice does \emph{not} account for
+the fact that most lags in the $\{1,4,10,32\}$ mixture are below 32: because
+the raw log-ratio magnitude grows roughly linearly in $\Delta_i$, a constant
+raw weight yields an effective per-rollout dose $\propto \Delta_i/32$ ---
+sub-maximal lags are effectively under-regularized relative to the
+calibrated arm, whose effective dose is flat at $0.0045$ for every rollout.
+Alternative constants (the mixture-mean-matched $w{=}0.015$ and the
+$\Delta{=}1$-matched $w{=}0.045$) were run in the BF16 heterogeneous sweep
+(Finding~2), where the $\Delta_{\max}$-anchored $w{=}0.0045$ performed best;
+only that point was carried into the FP4 heterogeneous and within-group
+batches.
+
 \section{Results}
 
 \begin{figure}[ht]
