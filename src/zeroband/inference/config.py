@@ -349,6 +349,30 @@ class RLConfig(BaseConfig):
         ),
     ]
 
+    staleness_within_group: Annotated[
+        bool,
+        Field(
+            default=False,
+            description=(
+                "Within-group staleness mixing: requires staleness_offsets. "
+                "Instead of giving each DP rank a fixed lag, every rank "
+                "generates its batch in R=len(staleness_offsets) rounds; "
+                "round j reloads checkpoint max(step - offsets[j], 0) and "
+                "generates sampling.n / R samples for the SAME prompts. "
+                "Outputs are merged per prompt across rounds before reward "
+                "computation, so advantage centering happens over all n "
+                "samples while each group mixes policy ages. Each rollout "
+                "row is stamped with the generating round's checkpoint step."
+            ),
+        ),
+    ]
+
+    @model_validator(mode="after")
+    def validate_staleness_within_group(self):
+        if self.staleness_within_group and self.staleness_offsets is None:
+            raise ValueError("--rl.staleness-within-group requires --rl.staleness-offsets to be set")
+        return self
+
 
 class OnlineEvalConfig(BaseConfig):
     """Configures online evaluation."""

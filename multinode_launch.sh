@@ -196,6 +196,12 @@ if [ -n "$staleness_offsets" ]; then
     infer_args+=" --rl.staleness-offsets $staleness_offsets"
 fi
 
+# staleness_within_group=true: each rank generates its batch in R=len(offsets)
+# rounds, mixing policy ages WITHIN each problem's group of samples.
+if [ -n "$staleness_within_group" ] && [ "$staleness_within_group" = "true" ]; then
+    infer_args+=" --rl.staleness-within-group"
+fi
+
 
 
 # Display loaded configuration

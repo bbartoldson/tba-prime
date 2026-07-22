@@ -223,17 +223,20 @@ def inference(config: InferenceConfig):
 
         # Reload model weights from checkpoint if we are too far ahead of the checkpoint step
         if config.rl and config.rl.staleness_offsets is not None:
-            # Heterogeneous-staleness mode: this rank tracks a fixed lag
-            # behind the inference step, so different DP ranks sample from
-            # policies of different ages.
-            offset = config.rl.staleness_offsets[dp_rank % len(config.rl.staleness_offsets)]
-            target_ckpt_step = max(step - offset, 0)
-            if target_ckpt_step > ckpt_step:
-                logger.info(
-                    f"Staleness offset {offset} (dp_rank {dp_rank}): reloading checkpoint step {target_ckpt_step} at inference step {step}"
-                )
-                ckpt_step = target_ckpt_step
-                llm = reload_checkpoint(llm, config.rl.ckpt_path, ckpt_step)
+            if not config.rl.staleness_within_group:
+                # Heterogeneous-staleness mode: this rank tracks a fixed lag
+                # behind the inference step, so different DP ranks sample from
+                # policies of different ages.
+                offset = config.rl.staleness_offsets[dp_rank % len(config.rl.staleness_offsets)]
+                target_ckpt_step = max(step - offset, 0)
+                if target_ckpt_step > ckpt_step:
+                    logger.info(
+                        f"Staleness offset {offset} (dp_rank {dp_rank}): reloading checkpoint step {target_ckpt_step} at inference step {step}"
+                    )
+                    ckpt_step = target_ckpt_step
+                    llm = reload_checkpoint(llm, config.rl.ckpt_path, ckpt_step)
+            # else: within-group staleness mixing reloads checkpoints inside the
+            # per-round generation loop below, so skip the per-step reload here.
         elif config.rl and step - ckpt_step > config.rl.async_level:
             logger.warning(
                 f"Hit async level ({config.rl.async_level}) because inference step {step} is {step - ckpt_step} steps ahead of checkpoint step {ckpt_step}. Trying to reload model weights from {config.rl.ckpt_path}"
@@ -302,6 +305,8 @@ def inference(config: InferenceConfig):
         )
 
         generate_start_time = time.time()
+        # Per-row checkpoint steps for within-group staleness mixing (None => scalar ckpt_step for all rows)
+        per_output_steps: list[list[int]] | None = None
         if config.contexts:
             # Convert tokenized prompts to TokensPrompt objects (prompt_id -> TokensPrompt)
             # TODO(jack): These can probably be lists and then we dont need the list dict sort thing going on at the end?
@@ -423,7 +428,61 @@ def inference(config: InferenceConfig):
             assert len(proofs) == batch_size, "Number of proofs must match batch size"
         else:
             token_prompts: list[TokensPrompt] = [TokensPrompt(prompt_token_ids=prompt_token_ids) for prompt_token_ids in tokenized_prompts]
-            request_outputs = llm.generate(token_prompts, sampling_params, use_tqdm=config.use_tqdm)
+            if config.rl and config.rl.staleness_within_group:
+                # Within-group staleness mixing: generate the batch in R=len(offsets)
+                # rounds, one per staleness offset. Round j reloads checkpoint
+                # max(step - offsets[j], 0) and generates sampling.n / R samples for
+                # the SAME prompts. Outputs are merged per prompt across rounds
+                # BEFORE reward computation, so advantage centering happens over all
+                # sampling.n samples while each group mixes policy ages.
+                assert node_address_int is None, "staleness_within_group does not support the toploc/pipeline (group_id) path"
+                assert not config.toploc.enable_toploc1, "staleness_within_group does not support toploc proofs"
+                num_rounds = len(config.rl.staleness_offsets)
+                assert sampling_params.n % num_rounds == 0, (
+                    f"sampling.n ({sampling_params.n}) must be divisible by the number of staleness offsets ({num_rounds})"
+                )
+                per_output_steps = [[] for _ in token_prompts]
+                merged = [None] * len(token_prompts)
+                # Oldest offset first so the freshest checkpoint is loaded LAST
+                # (leaves online evals + the next step's reload state freshest).
+                for round_idx, offset in enumerate(sorted(config.rl.staleness_offsets, reverse=True)):
+                    target_ckpt_step = max(step - offset, 0)
+                    if target_ckpt_step == 0 and ckpt_step != 0:
+                        # Checkpoint 0 means the base model, which is never written to
+                        # ckpt_path, and once a later checkpoint has been loaded we
+                        # cannot restore base weights. Clamp to the oldest stable
+                        # checkpoint still on disk (reload_checkpoint would poll
+                        # forever for the non-existent step_0).
+                        available_steps = sorted(
+                            int(p.name.split("_")[-1]) for p in Path(config.rl.ckpt_path).glob("step_*") if (p / "stable").exists()
+                        )
+                        target_ckpt_step = available_steps[0] if available_steps else ckpt_step
+                        logger.warning(
+                            f"Within-group staleness round {round_idx + 1}/{num_rounds} (offset {offset}): "
+                            f"no step_0 checkpoint (base model) available, clamping to checkpoint step {target_ckpt_step}"
+                        )
+                    if target_ckpt_step != ckpt_step:
+                        logger.info(
+                            f"Within-group staleness round {round_idx + 1}/{num_rounds} (offset {offset}): "
+                            f"reloading checkpoint step {target_ckpt_step} at inference step {step}"
+                        )
+                        ckpt_step = target_ckpt_step
+                        llm = reload_checkpoint(llm, config.rl.ckpt_path, ckpt_step)
+                    round_sampling_params = deepcopy(sampling_params)
+                    round_sampling_params.n = sampling_params.n // num_rounds
+                    if round_sampling_params.seed is not None:
+                        round_sampling_params.seed = sampling_params.seed + 7919 * round_idx
+                    round_outputs = llm.generate(token_prompts, round_sampling_params, use_tqdm=config.use_tqdm)
+                    for prompt_idx, round_output in enumerate(round_outputs):
+                        if merged[prompt_idx] is None:
+                            merged[prompt_idx] = round_output
+                        else:
+                            merged[prompt_idx].outputs.extend(round_output.outputs)
+                        # Stamp rows with the checkpoint step that actually generated them
+                        per_output_steps[prompt_idx].extend([ckpt_step] * len(round_output.outputs))
+                request_outputs = merged
+            else:
+                request_outputs = llm.generate(token_prompts, sampling_params, use_tqdm=config.use_tqdm)
 
             # This generates proofs for the remaining sequences that haven't reached max_len.
             # We call here to give time for the proofs to be generated non-blocking in the background.
@@ -491,7 +550,19 @@ def inference(config: InferenceConfig):
         monitor.log(rewards_metrics, wandb_prefix="infer")
 
         if sampling_params.seed is not None:
-            sampling_seeds = [sampling_params.seed + i for i in range(sampling_params.n)] * problems_per_batch
+            if config.rl and config.rl.staleness_within_group:
+                # Rounds mode: each problem's n samples are generated in R rounds of
+                # n // R samples, round j using base seed + 7919 * j. Concatenate the
+                # per-round seeds so the list matches the merged output order.
+                num_rounds = len(config.rl.staleness_offsets)
+                per_problem_seeds = [
+                    sampling_params.seed + 7919 * round_idx + i
+                    for round_idx in range(num_rounds)
+                    for i in range(sampling_params.n // num_rounds)
+                ]
+                sampling_seeds = per_problem_seeds * problems_per_batch
+            else:
+                sampling_seeds = [sampling_params.seed + i for i in range(sampling_params.n)] * problems_per_batch
         else:
             sampling_seeds = [None] * batch_samples
 
@@ -507,6 +578,7 @@ def inference(config: InferenceConfig):
             enable_logprobs=config.sampling.logprobs is not None,
             seeds=sampling_seeds,
             temperature=sampling_params.temperature,
+            per_output_steps=per_output_steps,
         )
 
         # Save outputs to parquet file

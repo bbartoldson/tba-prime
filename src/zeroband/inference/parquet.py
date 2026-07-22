@@ -46,6 +46,7 @@ def get_parquet_table(
     seeds: list[int],
     temperature: float,
     ground_truths: list[str] = None,
+    per_output_steps: list[list[int]] | None = None,
 ) -> pa.Table:
     # Iterator over proofs
     proof_iter = iter(proofs)
@@ -55,16 +56,18 @@ def get_parquet_table(
     if ground_truths is None:
         ground_truths = prompts
 
-    for request_output, request_rewards, prompt, target_length, problem, ground_truth in zip(
-        request_outputs,
-        request_rewards,
-        prompts,
-        target_lengths,
-        problems,
-        ground_truths,
+    for request_idx, (request_output, request_rewards, prompt, target_length, problem, ground_truth) in enumerate(
+        zip(
+            request_outputs,
+            request_rewards,
+            prompts,
+            target_lengths,
+            problems,
+            ground_truths,
+        )
     ):
         assert request_output.request_id == request_rewards.request_id
-        for output, reward, seed in zip(request_output.outputs, request_rewards.rewards, seeds):
+        for output_idx, (output, reward, seed) in enumerate(zip(request_output.outputs, request_rewards.rewards, seeds)):
             assert output.index == reward.completion_id
 
             # Extract logprobs if enabled and available
@@ -86,7 +89,7 @@ def get_parquet_table(
                     "task_rewards": reward.task_reward,
                     "length_penalties": reward.length_penalty,
                     "proofs": next(proof_iter) if len(output.token_ids) > 1 else b"",
-                    "step": step,
+                    "step": per_output_steps[request_idx][output_idx] if per_output_steps is not None else step,
                     "target_lengths": target_length,
                     "task_type": request_rewards.task_type,
                     "seed": seed,
