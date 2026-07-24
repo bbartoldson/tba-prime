@@ -25,11 +25,11 @@ plt.rcParams.update({
 })
 
 
-def line(ax, series, color, label, dashed=False):
+def line(ax, series, color, label, dashed=False, dy=0):
     xs, ys = zip(*series)
     ax.plot(xs, ys, color=color, lw=2, label=label, ls="--" if dashed else "-",
             solid_capstyle="round")
-    ax.annotate(f"{ys[-1]:.2f}", (xs[-1], ys[-1]), xytext=(4, 0),
+    ax.annotate(f"{ys[-1]:.2f}", (xs[-1], ys[-1]), xytext=(4, dy),
                 textcoords="offset points", color=color, fontsize=8,
                 fontweight="bold", va="center")
 
@@ -104,4 +104,51 @@ line(ax, DATA["fp4hetero_b0"], C3, "KL off (β=0)")
 base(ax)
 fig.tight_layout()
 fig.savefig("fig_fp4hetero.pdf")
+
+# ---- Figure 6: within-group age mixing, BF16 vs NVFP4 (in progress) -------
+# Small multiples: identical series identity/colour in both panels, one shared
+# legend, common x/y limits, and an explicit common-step-floor rule so the two
+# panels (and the arms inside them) are compared at the same step.
+WG_FLOOR = min(DATA[k][-1][0] for k in (
+    "heteroWG_b0", "heteroWG_w0045", "heteroWG_perRollout",
+    "fp4heteroWG_b0", "fp4heteroWG_w0045", "fp4heteroWG_perRollout"))
+
+fig, axes = plt.subplots(1, 2, figsize=(6.9, 3.3), dpi=200, sharey=True)
+panels = [("BF16", "heteroWG"), ("NVFP4", "fp4heteroWG")]
+series = [("perRollout", C1, "Per-rollout $c_i$", 7),
+          ("w0045", C2, "Uniform w=0.0045", -7),
+          ("b0", C3, "KL off (β=0)", 0)]
+for ax, (tag, prefix) in zip(axes, panels):
+    ax.axvline(WG_FLOOR, color=MUTED, lw=0.8, ls=":", zorder=0)
+    for suffix, color, label, dy in series:
+        line(ax, DATA[f"{prefix}_{suffix}"], color, label, dy=dy)
+    ax.set_title(tag, fontsize=9, color=TEXT, loc="left")
+    ax.set_xlabel("training step")
+    ax.set_xlim(-15, 430)
+    ax.set_ylim(0.0, 0.9)
+    ax.grid(axis="y", color=GRID, lw=0.6)
+axes[0].set_ylabel("Countdown eval accuracy")
+axes[0].annotate(f"common floor\nstep {WG_FLOOR}", (WG_FLOOR, 0.045), xytext=(-4, 0),
+                 textcoords="offset points", color=MUTED, fontsize=7, ha="right")
+h, lab = axes[0].get_legend_handles_labels()
+fig.legend(h, lab, loc="lower center", ncol=3, frameon=False, fontsize=8,
+           bbox_to_anchor=(0.5, -0.02))
+fig.tight_layout(rect=(0, 0.08, 1, 1))
+fig.savefig("fig_withingroup.pdf")
+
+# ---- Figure 7: error-triggered exact-KL fallback (in progress) ------------
+fig, ax = plt.subplots(figsize=(6.4, 3.2), dpi=200)
+TRIGGER = 262
+ax.axvline(TRIGGER, color=MUTED, lw=0.8, ls=":", zorder=0)
+ax.annotate(f"fallback latches\n(step {TRIGGER})", (TRIGGER, 0.30), xytext=(-6, 0),
+            textcoords="offset points", color=MUTED, fontsize=7, ha="right")
+line(ax, DATA["fp4sym_resc_async32"], C1, "Surrogate only")
+line(ax, DATA["fp4sym_resc_async32_klFallback"], C2, "Exact-KL fallback on trigger")
+ax.set_xlabel("training step")
+ax.set_ylabel("Countdown eval accuracy")
+ax.set_ylim(0.0, 0.9)
+ax.grid(axis="y", color=GRID, lw=0.6)
+ax.legend(loc="lower left", frameon=False, fontsize=8)
+fig.tight_layout()
+fig.savefig("fig_klfallback.pdf")
 print("figures written")

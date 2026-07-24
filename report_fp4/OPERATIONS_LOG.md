@@ -801,3 +801,36 @@ Uniform arm finished (24h TIMEOUT, healthy to the end). Only the decisive perRol
 ## 20:55 — fp4hetero BATCH COMPLETE — final report update launched
 
 Decisive perRollout arm ended healthy at step 381 (24h TIMEOUT, zero errors); uniform ended healthy at 361; control collapsed ~205. Both KL arms survived to horizon where β=0 died — the rescue half of the original hypothesis holds under FP4 heterogeneity. Eval-curve verdict on per-rollout vs uniform being computed by the report subagent (train-reward suggested a per-rollout lead; evals decide).
+
+## 2026-07-23 19:25 — within-group batch + klFallback: partial-data report update
+
+Seven runs in flight, all targeting 720 steps, none past step ~380. Metrics
+pulled read-only from the local offline wandb datastores
+(`logs/wandb/run-*/run-*.wandb`, decoded with `wandb.sdk.internal.datastore`);
+eval curves come from the `infer.py`-side run of each job as
+`eval/countdown/score`, trainer diagnostics (`rewards/avg_KL`,
+`rewards/sample_reward`, `kl_approx/*`, `kl_fallback/*`) from the `train.py`
+side. Note that the six `*heteroWG*` jobs each have a dead first attempt from
+07-22 18:26 (~1 h, ≤ step 20) plus the live attempt from 07-23 01:45 / 02:11;
+the live attempts restarted from step 0, so only they are used.
+
+| Run | trainer wandb dir | infer wandb dir | last eval |
+|---|---|---|---|
+| fp4sym_...b0016_async32_klFallback | run-20260722_212455-98vpcu40 | run-20260722_212422-tovkhjao | 360 |
+| fp4heteroWG_perRollout | run-20260722_212122-j107zbvg | run-20260722_212056-b8qj5oa5 | 340 |
+| heteroWG_global_w0045 | run-20260723_014625-6bzhp7yp | run-20260723_014548-gwm90ehz | 260 |
+| heteroWG_b0 | run-20260723_014556-hbbbcajb | run-20260723_014524-vmwy3t1j | 260 |
+| heteroWG_perRollout | run-20260723_021158-88djkn1f | run-20260723_021127-2uf6hu5i | 260 |
+| fp4heteroWG_global_w0045 | run-20260723_014626-6pbyep5q | run-20260723_014547-6hhyr7my | 260 |
+| fp4heteroWG_b0 | run-20260723_014625-ya8gcmv0 | run-20260723_014548-xkt6zde2 | 240 |
+
+Report data cached in `fp4_report_data.json` under keys `heteroWG_*`,
+`fp4heteroWG_*`, `fp4sym_resc_async32_klFallback`, plus `wg_avg_kl` /
+`wg_train_reward` dicts for the trainer-side diagnostics. Two new figures
+(`fig_withingroup.pdf`, `fig_klfallback.pdf`) and two new report subsections;
+all cross-arm numbers quoted at a common step floor (240 for the 2x3 grid,
+360 for the fallback pair) because the arms sit at different steps.
+
+Events: `kl_fallback` fired once, in the only run that armed it — rollout step
+262, |avg_KL| 13.5 vs baseline 4.54. No job was disturbed; all seven still
+running at the time of writing.

@@ -10,7 +10,7 @@
 \title[The Free EMA-KL Surrogate Prevents Staleness Collapse]{Phase-A Results: The Free EMA-KL Surrogate Prevents Staleness Collapse,\\
 and Its Theory Picks the Right Dose}
 \author{Brian Bartoldson (experiments run and report drafted with Claude)}
-\date{July 22, 2026}
+\date{July 23, 2026}
 
 \newcommand{\E}{\mathbb{E}}
 \newcommand{\KL}{\mathrm{KL}}
@@ -49,6 +49,21 @@ control collapses at ${\sim}$step 205 while both KL arms train through their
 full horizons; per-rollout and uniform dosing tie on eval (peaks $0.771$
 vs.\ $0.764$, single seed) --- the rescue claim holds, and the weighting
 refinement is not separable from a well-chosen constant.
+(5)~Two further experiments are reported \emph{in progress}, at roughly a
+third of their intended horizon and read at a common step floor. Mixing the
+same lags \emph{within} each $K$-group --- the only regime in which
+per-rollout weighting can act --- moves the $\beta{=}0$ collapse
+${\sim}40$--$55$ steps earlier in both precisions and lifts the
+calibrated-vs-uniform comparison out of the tie band ($\pm0.004$) in both,
+but with opposite signs ($+0.029$ eval for per-rollout in BF16, $-0.010$
+under NVFP4); the structural prediction --- allocation is inert only while
+groups are age-homogeneous --- survives, the ranking does not yet resolve.
+(6)~An error-triggered switch from the surrogate to the exact EMA-KL term,
+designed to catch the FP4 $\Delta{=}32$ late failure, fires where intended
+(step 262, before any eval turn, from a trajectory indistinguishable from
+its twin) but brings the failure ${\sim}60$--$80$ steps forward: a free
+accuracy monitor is a usable alarm, and swapping estimators mid-run is not a
+free correction.
 \end{abstract}
 
 \section{Introduction}
@@ -78,7 +93,7 @@ different weights $c_i$ to maintain a constant effective regularization
 strength, and a known-good effective dose $\beta c$ can be transported
 across staleness regimes without re-tuning.
 
-This report evaluates the surrogate empirically through five questions, each
+This report evaluates the surrogate empirically through seven questions, each
 answered by one figure:
 (i)~does staleness alone break unregularized asynchronous RL, and does the
 free surrogate prevent it (Fig.~\ref{fig:collapse}: yes, and yes);
@@ -95,8 +110,17 @@ rescues $\Delta{=}10$ and delays, but does not eliminate, the $\Delta{=}32$
 failure);
 (v)~does staleness weighting matter under FP4 heterogeneity
 (Fig.~\ref{fig:fp4hetero}: the rescue holds; weighting vs.\ a constant is a
-tie at one seed). Except where noted, results are single-seed; tie bands and
-caveats are stated with each finding.
+tie at one seed);
+(vi)~does mixing policy ages \emph{within} each $K$-group --- the regime the
+tie in (ii) and (v) was blamed on --- change that answer
+(Fig.~\ref{fig:withingroup}: it ends the tie, and makes the unregularized
+failure worse, but the two precisions disagree on the sign at this horizon);
+(vii)~can a free, error-triggered switch to the exact EMA-KL term rescue the
+one arm the surrogate fails to hold (Fig.~\ref{fig:klfallback}: no --- the
+alarm fires correctly and the intervention hurts). Questions (vi) and (vii)
+are answered by runs still in flight and are marked in progress throughout.
+Except where noted, results are single-seed; tie bands and caveats are stated
+with each finding.
 
 \section{Setup}
 
@@ -115,6 +139,28 @@ ages (verified in the rollout parquets: the trainer's step-10 batch carries
 generating checkpoints $\{9,6,0,0\}$). The homogeneous arms use offsets
 $10,10,10,10$ (reference) or the legacy reload rule at
 \texttt{async\_level}$=$32 ($\beta{=}0$ control).
+
+\paragraph{Within-group age mixing.} \texttt{--rl.staleness-within-group}
+replaces the per-rank pinning with rounds-based generation: each prompt's $K$
+samples are produced in one round per offset (oldest checkpoint first) and the
+rounds are merged before reward and advantage centering, so every $K$-group
+spans all four ages $\Delta_i \in \{1,4,10,32\}$. Parquet rows carry the
+per-output generating checkpoint step; the trainer's per-token $\Delta_i$
+machinery is unchanged. The offset multiset, \texttt{async\_level}, and doses
+are identical to the between-group arms --- only the placement of the ages
+differs, which is what isolates the allocation question.
+
+\paragraph{Runs in progress, and the common-step-floor rule.} Sections
+\ref{sec:withingroup} and \ref{sec:fallback} report seven runs that have not
+reached their 720-step target; their last completed evals span steps
+240--360, and arms within a comparison sit at different steps. Reading each
+arm at its own latest step would confound arm with horizon, so every
+cross-arm statement in those sections is made at the \emph{common step
+floor} --- the minimum last-eval step over the arms compared (step 240 for
+the $2\times3$ grid, step 360 for the fallback pair) --- and paired
+statistics are computed only over steps both arms have reached. Peaks from
+these runs are quoted with their step and are not comparable to the completed
+runs above.
 
 \paragraph{Anchors and calibration.} Every arm anchors both the importance
 ratio and the KL term on the sampler's own vLLM logprobs. Per-rollout
@@ -327,6 +373,141 @@ collapses; the comparison against uniform dosing is a tie at this seed
 count, consistent with the age-homogeneous-group mechanism of
 Section~\ref{sec:dose}.
 
+\subsection{Does within-group age mixing separate weighting from a constant?}
+\label{sec:withingroup}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=\linewidth]{fig_withingroup.pdf}
+  \caption{In progress. Within-group age mixing: every $K$-group spans
+  $\Delta_i \in \{1,4,10,32\}$. Same three arms, same colours, both
+  precisions; dotted line marks the common step floor (240) at which the six
+  arms are compared. $\beta{=}0$ (yellow) collapses in both panels, earlier
+  under NVFP4; both KL arms train through those windows.}
+  \label{fig:withingroup}
+\end{figure}
+
+Yes --- it ends the tie, though the two precisions disagree on which side
+wins. Section~\ref{sec:dose} argued that per-rollout weighting has no room to
+act while each $K$-group is policy-homogeneous, because switching from a
+constant to $c_i$ then rescales each group's summed penalty by a common
+factor that batch-level normalization largely absorbs. The mechanism predicts
+a separation as soon as the ages mix \emph{inside} a group, so we ran the
+$2\times3$ grid $\{$BF16, NVFP4$\}\times\{\beta{=}0$, uniform $w{=}0.0045$,
+per-rollout $c_i\}$ with within-group mixing and otherwise unchanged
+configuration. All six arms are still training; at the common floor of step
+240 they stand at
+
+\begin{center}\small
+\begin{tabular}{lcc}
+\toprule
+Within-group arm (eval at step 240) & BF16 & NVFP4 \\
+\midrule
+Per-rollout $c_i$ & 0.773 & 0.738 \\
+Uniform $w{=}0.0045$ & 0.752 & 0.760 \\
+KL off ($\beta{=}0$) & 0.324 & 0.224 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Two things are already legible (Fig.~\ref{fig:withingroup}). First, the
+rescue reproduces and the unregularized failure gets harder. Both $\beta{=}0$
+controls collapse and neither recovers, and both collapse earlier than the
+identical lag multiset mixed \emph{across} groups: ${\sim}$step 190 vs.\
+${\sim}230$ in BF16 (train reward $0.766 \to 0.471$ over steps 180--200,
+monitored $|\overline{\KL}|$ $14.6 \to 297$) and ${\sim}150$ vs.\ ${\sim}205$
+under NVFP4 (train reward $0.686 \to 0.377$ over steps 140--160,
+$|\overline{\KL}|$ $30.8 \to 699$, with instability visible from step 120).
+This matters because within-group mixing is not an exotic configuration: it
+is what a throughput-maximizing scheduler produces by default once it stops
+pinning ranks to checkpoints. Holding the average lag fixed and only
+redistributing it inside the group costs ${\sim}40$--$55$ steps of stability,
+and the NVFP4 penalty on top of that (${\sim}40$ steps) is the same
+compounding measured in Section~\ref{sec:fp4}. Both KL arms train through
+these windows in both precisions, at the same dose used everywhere else in
+this report.
+
+Second, the calibrated-versus-uniform comparison leaves the tie band --- with
+opposite signs. Over the seven evals from step 140 to 260, the range both
+arms share in both precisions, per-rollout $c_i$ leads the uniform dose by
+$+0.029$ eval on average in BF16 and is ahead at $7/7$ of those evals; under
+NVFP4 the uniform dose leads by $0.010$ and is ahead at $6/7$. The same
+statistic on the age-homogeneous runs of Sections~\ref{sec:dose}
+and~\ref{sec:fp4hetero} is $+0.004$ ($4/7$) and $+0.003$ ($3/7$) --- coin
+flips at a tenth the magnitude. The BF16 panel is the predicted result at
+roughly the predicted size; the NVFP4 panel is a smaller effect of the wrong
+sign, and we decline to read a ranking out of one seed per cell at a third of
+the intended horizon. What the grid does support is the weaker structural
+claim the mechanism actually makes, and which the earlier sections could not
+test: \emph{allocation across rollouts is inert while groups are
+age-homogeneous and is not inert once they are not}. The total delivered
+penalty is not what changed --- median $|\overline{\KL}|$ is $5.2$
+(per-rollout) vs.\ $1.6$ (uniform) in these runs, against $5.1$ vs.\
+$1.5$--$1.9$ in the between-group runs --- so the two designs differ in where
+the weight is placed, not in how much is delivered. Deciding the sign
+requires the full horizons and $\ge3$ paired seeds.
+
+\subsection{Can an error-triggered exact-KL switch rescue $\Delta{=}32$?}
+\label{sec:fallback}
+
+\begin{figure}[ht]
+  \centering
+  \includegraphics[width=0.85\linewidth]{fig_klfallback.pdf}
+  \caption{In progress. FP4 $\Delta{=}32$, $\beta c = 0.0045$, with and
+  without the error-triggered exact-KL fallback. The two runs are
+  indistinguishable until the fallback latches at step 262 (dotted), after
+  which the switched arm falls away $60$--$80$ steps ahead of its twin.}
+  \label{fig:klfallback}
+\end{figure}
+
+No --- the alarm is sound and the intervention is harmful. The FP4
+$\Delta{=}32$ rescue arm of Section~\ref{sec:fp4} degrades late, and its
+surrogate diagnostics degrade first: in that run the relative error of means
+sits at $1.03$--$1.07$ from step 60 through 200, then reaches $1.6$ at 240,
+$4.3$ at 260 and $23.6$ at 300 --- $80$--$100$ steps ahead of the eval turn
+near step 340 --- while the bias stays negative and grows
+($-0.05 \to -0.16$): the
+surrogate under-doses exactly when the brake is needed. The corresponding
+intervention is free, because the exact EMA-KL term
+is already computed every step for these diagnostics: a run can watch
+$|\overline{\KL}|$ against its own steps-100--200 baseline and, on a
+sustained excursion ($2\times$ for 20 consecutive rollout steps), latch the
+loss to the exact branch for the remainder of training. We ran the same
+configuration with that fallback armed.
+
+The detector behaved exactly as designed. It fired at rollout step 262
+($|\overline{\KL}| = 13.5$ against a baseline of $4.54$), ahead of any eval
+turn --- eval was at its run maximum, $0.687$ at step 260. Up to that point
+the fallback run and its surrogate-only twin are indistinguishable (mean
+paired eval difference $+0.003$ over steps 0--260, never exceeding $0.06$ in
+magnitude), which is what makes the divergence afterwards attributable to the
+switch rather than to seed noise: eval $0.499$ (280), $0.323$ (300), $0.141$
+(320), $0.053$ (340), $0.018$ (360), against the twin's $0.610$, $0.669$,
+$0.560$, $0.514$, $0.196$ --- a paired deficit that widens at every step to
+$0.46$ by step 340, after which the twin begins failing too
+(Fig.~\ref{fig:klfallback}). The twin's own turn comes near step 360; the
+fallback moves that failure ${\sim}60$--$80$ steps earlier and drives it an
+order of magnitude deeper.
+
+The diagnostics suggest the switch is also, inadvertently, a dose change.
+After latching, the delivered penalty runs at $3$--$7\times$ its own
+pre-trigger baseline ($|\overline{\KL}|$ $14.9$--$33.6$ vs.\ $4.54$) and the
+gradient norm rises from ${\sim}0.06$ to $0.17$--$0.47$. A mechanism is
+available: the two estimators are truncated in different units --- the
+surrogate clamps the raw log-ratio at $\pm10$ before multiplying by
+$c = 0.28125$, whereas the exact term clamps the KL itself --- so at fixed
+$\beta$ they are not interchangeable once drift is large, and swapping them
+mid-run raises the effective strength at the least forgiving moment. We flag
+this as a hypothesis, not a result: with one seed we cannot separate the
+post-latch growth in penalty magnitude from the collapse it accompanies. The
+usable conclusion is the conservative one. A zero-cost accuracy monitor is
+worth keeping as an alarm --- it selected the right run and the right moment,
+firing while eval was still at its maximum --- but estimator substitution is
+not a free correction. Any future
+version should be dose-matched at the latch, rescaling $\beta$ so the
+delivered penalty is continuous across the switch, and should be evaluated
+against a same-seed control that latches to the surrogate itself.
+
 \section{Related work}
 
 \paragraph{EMA anchors in RL for LLMs.} EMA-PG \cite{emapg} regularizes
@@ -363,19 +544,28 @@ scaling rules our QDQ emulation follows.
 \section{Future work}
 \label{sec:future}
 
-Five directions follow directly from the findings. (1)~\emph{Within-group
-staleness mixing}: the mechanism in Section~\ref{sec:dose} implies
-per-rollout weighting can only separate from a constant when policy ages mix
-within a $K$-group; an experiment with within-group mixing is ongoing.
-(2)~\emph{Quantization-aware dose scaling}: the late degradation of the FP4
+Five directions follow directly from the findings. (1)~\emph{Resolving the
+within-group sign}: Section~\ref{sec:withingroup} shows that mixing ages
+inside a $K$-group does move calibrated dosing off the tie with a constant,
+but BF16 and NVFP4 disagree on the direction at a third of the horizon. This
+is the one place where a ranking is plausibly obtainable, and it needs the
+full 720 steps and $\ge3$ paired seeds per cell rather than more
+configurations. (2)~\emph{Dose-matched estimator switching}: the fallback of
+Section~\ref{sec:fallback} shows that swapping the surrogate for the exact
+term at fixed $\beta$ changes the delivered strength; the corrected version
+rescales $\beta$ at the latch so the penalty is continuous, and is compared
+against a same-seed control that latches to the surrogate. (3)~\emph{%
+Quantization-aware dose scaling}: the late degradation of the FP4
 $\Delta{=}32$ rescue suggests treating the quantization gap as extra
-effective staleness when setting the dose. (3)~\emph{The asymmetric
+effective staleness when setting the dose --- an alternative to (2) that
+raises the dose in advance rather than in reaction. (4)~\emph{The asymmetric
 setting}: a gap-centered variant or a differentiable KL-in-loss path, so the
 quantization gap exerts corrective rather than globally negative pressure.
-(4)~\emph{Seeds and tasks}: $\ge 3$ paired seeds on calibrated vs.\
-best-uniform, and a second task (MATH). (5)~\emph{A $\Delta_i$ floor}
-(${\sim}4$) in $c_i$, suggested by the stratified error of
-Section~\ref{sec:strata}.
+(5)~\emph{A $\Delta_i$ floor} (${\sim}4$) in $c_i$, suggested by the
+stratified error of Section~\ref{sec:strata}; the within-group runs are the
+natural place to test it, since they are the first configuration in which
+small-$\Delta$ rollouts and large-$\Delta$ rollouts share a group and their
+weights therefore compete.
 
 \begin{thebibliography}{9}\small
 
@@ -464,6 +654,14 @@ Arm & $\beta$ & async & offsets & $\Delta$-source \\
 \texttt{fp4hetero\_b0\_async32} & 0 & 32 & 1,4,10,32 & --- \\
 \texttt{fp4hetero\_approxKL\_global\_w0045} & 0.016 & 32 & 1,4,10,32 & global \\
 \texttt{fp4hetero\_approxKL\_b005\_perRollout} & 0.005 & 32 & 1,4,10,32 & per\_rollout \\
+\midrule
+\texttt{fp4sym\_b0016\_async32\_klFallback}$^{\S}$ & 0.016 & 32 & --- & global \\
+\texttt{heteroWG\_b0} & 0 & 32 & 1,4,10,32$^{\ast}$ & --- \\
+\texttt{heteroWG\_global\_w0045} & 0.016 & 32 & 1,4,10,32$^{\ast}$ & global \\
+\texttt{heteroWG\_perRollout} & 0.005 & 32 & 1,4,10,32$^{\ast}$ & per\_rollout \\
+\texttt{fp4heteroWG\_b0} & 0 & 32 & 1,4,10,32$^{\ast}$ & --- \\
+\texttt{fp4heteroWG\_global\_w0045} & 0.016 & 32 & 1,4,10,32$^{\ast}$ & global \\
+\texttt{fp4heteroWG\_perRollout} & 0.005 & 32 & 1,4,10,32$^{\ast}$ & per\_rollout \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -473,7 +671,12 @@ KL penalty: $-\beta \sum_t c\,\mathrm{clamp}(\log T_n - \log T_{n-\Delta},
 per the table. FP4 arms add \texttt{rollout\_quant=nvfp4} +
 \texttt{fake\_quant=nvfp4} (252 patched linears; embeddings,
 \texttt{lm\_head}, norms BF16). $^{\dagger}$BF16 trainer, QDQ sampler
-(asymmetric; \texttt{fake\_quant} off).
+(asymmetric; \texttt{fake\_quant} off). $^{\S}$Adds
+\texttt{kl\_fallback=exact\_on\_trigger} ($2\times$ over the steps-100--200
+$|\overline{\KL}|$ baseline, sustained 20 rollout steps); otherwise identical
+to \texttt{fp4sym\_approxKL\_b0016\_async32}. $^{\ast}$Lags mixed \emph{within}
+each $K$-group (\texttt{staleness\_within\_group=true}) rather than across
+data-parallel ranks. The last seven rows are runs in progress.
 
 \section{Eval table (selected steps)}
 
@@ -499,11 +702,24 @@ FP4 asym.\ (BF16 trainer) & 0.036 & --- & --- & --- & --- & 0.001 (180) \\
 FP4-hetero, $\beta{=}0$$^{\ddagger}$ & 0.716 & 0.161 & 0.254 & --- & --- & 0.163 (320) \\
 FP4-hetero, uniform $w{=}0.0045$ & 0.659 & 0.711 & 0.741 & --- & --- & 0.764 (360) \\
 FP4-hetero, per-rollout $c_i$ & 0.649 & 0.705 & 0.756 & --- & --- & 0.771 (360) \\
+\midrule
+\multicolumn{7}{l}{\emph{In progress (Sections~\ref{sec:withingroup},
+\ref{sec:fallback}); last column is the last completed eval.}}\\
+Within-group BF16, per-rollout $c_i$ & 0.712 & 0.776 & --- & --- & --- & 0.777 (260) \\
+Within-group BF16, uniform $w{=}0.0045$ & 0.693 & 0.725 & --- & --- & --- & 0.758 (260) \\
+Within-group BF16, $\beta{=}0$ & 0.741 & 0.336 & --- & --- & --- & 0.378 (260) \\
+Within-group FP4, per-rollout $c_i$ & 0.658 & 0.729 & 0.758 & --- & --- & 0.764 (340) \\
+Within-group FP4, uniform $w{=}0.0045$ & 0.678 & 0.736 & --- & --- & --- & 0.760 (260) \\
+Within-group FP4, $\beta{=}0$ & 0.725 & 0.155 & --- & --- & --- & 0.224 (240) \\
+FP4 $\Delta{=}32$, KL on $+$ fallback & 0.633 & 0.668 & 0.323 & --- & --- & 0.018 (360) \\
 \bottomrule
 \end{tabular}
 
 \smallskip
-{\small $^{\ddagger}$Run ended early by an infrastructure fault.}
+{\small $^{\ddagger}$Run ended early by an infrastructure fault. Rows below
+the rule are truncated at the last completed eval of a run still training;
+cross-arm comparisons in the text are made at a common step floor, not at
+these final values.}
 \end{center}
 
 \end{document}
